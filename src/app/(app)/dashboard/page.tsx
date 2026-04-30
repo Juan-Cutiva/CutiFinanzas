@@ -52,6 +52,9 @@ export default async function DashboardPage() {
       totals.savingsContributionMinor) /
     100;
   const savedMajor = totals.savingsContributionMinor / 100;
+  const goalsTotalCurrent = goals
+    .filter((g) => g.currency === currency)
+    .reduce((acc, g) => acc + Number(g.currentAmountMinor) / 100, 0);
 
   const balanceMajor = accounts
     .filter((a) => a.currency === currency)
@@ -86,8 +89,9 @@ export default async function DashboardPage() {
         />
         <KpiCard
           icon={<PiggyBank className="size-4 text-[color:var(--info)]" aria-hidden />}
-          label="Ahorrado este mes"
-          value={formatAmount(savedMajor, currency)}
+          label="Acumulado en metas"
+          value={formatAmount(goalsTotalCurrent, currency)}
+          hint={`+${formatAmount(savedMajor, currency)} aportado este mes`}
         />
       </section>
 
@@ -234,11 +238,13 @@ function KpiCard({
   label,
   value,
   tone,
+  hint,
 }: {
   icon: React.ReactNode;
   label: string;
   value: string;
   tone?: 'positive' | 'negative';
+  hint?: string;
 }) {
   return (
     <Card className="overflow-hidden">
@@ -260,6 +266,7 @@ function KpiCard({
         >
           {value}
         </p>
+        {hint ? <p className="mt-1 text-xs text-muted-foreground">{hint}</p> : null}
       </CardContent>
     </Card>
   );

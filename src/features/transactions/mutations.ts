@@ -1,7 +1,8 @@
 import 'server-only';
+import dayjs from 'dayjs';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { accounts, debts, savingsGoals, transactions } from '@/db/schema';
+import { accounts, debts, recurringRules, savingsGoals, transactions } from '@/db/schema';
 import { NotFoundError, ValidationError } from '@/lib/errors';
 import type { CurrencyCode } from '@/lib/money';
 import type { UserId } from '@/types/ids';
@@ -67,6 +68,37 @@ export async function createTransaction(userId: UserId, input: TransactionInput)
         updatedAt: sql`now()`,
       })
       .where(and(eq(savingsGoals.userId, userId), eq(savingsGoals.id, input.savingsGoalId)));
+  }
+
+  if (input.kind === 'income_fixed' || input.kind === 'expense_fixed') {
+    const dayOfMonth = Number.parseInt(input.occurredAt.slice(8, 10), 10);
+    const nextMonth = dayjs(input.occurredAt).add(1, 'month');
+    const lastDayNext = nextMonth.endOf('month').date();
+    const safeDayNext = Math.min(dayOfMonth, lastDayNext);
+    const nextOccurrence = nextMonth.date(safeDayNext).format('YYYY-MM-DD');
+
+    await db.insert(recurringRules).values({
+      userId,
+      accountId: input.accountId,
+      categoryId: input.categoryId ?? null,
+      kind: input.kind,
+      name:
+        input.description?.trim() ||
+        (input.kind === 'income_fixed' ? 'Ingreso fijo' : 'Gasto fijo'),
+      amountMinor,
+      currency: input.currency,
+      frequency: 'monthly',
+      dayOfMonth,
+      startDate: input.occurredAt,
+      nextOccurrenceDate: nextOccurrence,
+      isActive: true,
+      notes: input.notes ?? null,
+    });
+
+    await db
+      .update(transactions)
+      .set({ isRecurring: true })
+      .where(and(eq(transactions.userId, userId), eq(transactions.id, row.id)));
   }
 
   return row;
