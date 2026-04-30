@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { dayjs, formatAmount, formatDate } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
+import { cn } from '@/lib/utils';
 import { deleteTransactionAction } from '../actions';
 import { isExpenseKind, isIncomeKind } from '../domain';
 
@@ -128,11 +129,17 @@ function TxRow({ tx, onDelete }: { tx: TxListItem; onDelete: () => void }) {
   const expense = isExpenseKind(tx.kind);
   const income = isIncomeKind(tx.kind);
   const transfer = tx.kind === 'transfer';
+  const isVirtual = tx.id.startsWith('virtual:');
   const amountMajor = Number(tx.amountMinor) / 100;
   const Icon = transfer ? ArrowLeftRight : income ? ArrowUpRight : ArrowDownLeft;
 
   return (
-    <li className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30">
+    <li
+      className={cn(
+        'group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30',
+        isVirtual && 'opacity-80',
+      )}
+    >
       <div
         className="grid size-10 shrink-0 place-items-center rounded-full"
         style={{
@@ -146,8 +153,15 @@ function TxRow({ tx, onDelete }: { tx: TxListItem; onDelete: () => void }) {
         <Icon className="size-4" />
       </div>
       <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium">
-          {tx.description || tx.category?.name || (transfer ? 'Transferencia' : '—')}
+        <p className="flex items-center gap-2 truncate text-sm font-medium">
+          <span className="truncate">
+            {tx.description || tx.category?.name || (transfer ? 'Transferencia' : '—')}
+          </span>
+          {isVirtual ? (
+            <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+              Programado
+            </span>
+          ) : null}
         </p>
         <p className="truncate text-xs text-muted-foreground">
           {tx.account?.name ?? '—'}
@@ -165,15 +179,17 @@ function TxRow({ tx, onDelete }: { tx: TxListItem; onDelete: () => void }) {
             signDisplay: income ? 'always' : 'auto',
           })}
         </span>
-        <Button
-          size="icon"
-          variant="ghost"
-          aria-label="Eliminar movimiento"
-          className="size-8 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
-          onClick={onDelete}
-        >
-          <Trash2 className="size-4 text-muted-foreground" />
-        </Button>
+        {isVirtual ? null : (
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="Eliminar movimiento"
+            className="size-8 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            onClick={onDelete}
+          >
+            <Trash2 className="size-4 text-muted-foreground" />
+          </Button>
+        )}
       </div>
     </li>
   );
