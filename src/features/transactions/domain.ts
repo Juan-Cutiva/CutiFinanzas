@@ -9,6 +9,8 @@ export function amountMajorToMinor(amount: number, currency: CurrencyCode): bigi
   return BigInt(moneyToMinor(moneyFromMajor(amount, currency)));
 }
 
+const INCOME_KINDS = new Set(['income', 'income_fixed', 'income_variable']);
+
 const EXPENSE_KINDS = new Set([
   'expense_fixed',
   'expense_variable',
@@ -16,12 +18,16 @@ const EXPENSE_KINDS = new Set([
   'savings_contribution',
 ]);
 
+export function isIncomeKind(kind: string): boolean {
+  return INCOME_KINDS.has(kind);
+}
+
 export function isExpenseKind(kind: string): boolean {
   return EXPENSE_KINDS.has(kind);
 }
 
-export function isIncomeKind(kind: string): boolean {
-  return kind === 'income';
+export function isFixedKind(kind: string): boolean {
+  return kind === 'income_fixed' || kind === 'expense_fixed';
 }
 
 export function signFor(kind: string): 1 | -1 {

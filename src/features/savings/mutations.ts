@@ -1,11 +1,11 @@
 import 'server-only';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { savingsGoals } from '@/db/schema';
-import { NotFoundError } from '@/lib/errors';
+import { accounts, savingsGoals, transactions } from '@/db/schema';
+import { NotFoundError, ValidationError } from '@/lib/errors';
 import type { CurrencyCode } from '@/lib/money';
 import type { UserId } from '@/types/ids';
-import { amountMajorToMinor } from '../transactions/domain';
+import { amountMajorToMinor, getQuincenaFromIsoDate } from '../transactions/domain';
 import type { ContributeInput, SavingsGoalInput, UpdateSavingsGoalInput } from './schema';
 
 export async function createSavingsGoal(userId: UserId, input: SavingsGoalInput) {
@@ -69,10 +69,34 @@ export async function contributeToGoal(userId: UserId, input: ContributeInput) {
   });
   if (!existing) throw new NotFoundError('Meta');
 
+  const account = await db.query.accounts.findFirst({
+    where: and(eq(accounts.userId, userId), eq(accounts.id, input.accountId)),
+  });
+  if (!account) throw new ValidationError('Cuenta inválida');
+  if (account.currency !== existing.currency) {
+    throw new ValidationError(
+      `La cuenta usa ${account.currency} y la meta usa ${existing.currency}; convierte primero o usa otra cuenta.`,
+    );
+  }
+
   const currency = existing.currency as CurrencyCode;
   const inc = amountMajorToMinor(input.amount, currency);
   const newAmount = (existing.currentAmountMinor as bigint) + inc;
   const reachedTarget = newAmount >= (existing.targetAmountMinor as bigint);
+  const occurredAt = input.occurredAt ?? new Date().toISOString().slice(0, 10);
+
+  await db.insert(transactions).values({
+    userId,
+    accountId: input.accountId,
+    categoryId: null,
+    kind: 'savings_contribution',
+    amountMinor: inc,
+    currency: account.currency,
+    occurredAt,
+    description: `Aporte a ${existing.name}`,
+    isPaid: true,
+    quincena: getQuincenaFromIsoDate(occurredAt),
+  });
 
   const [row] = await db
     .update(savingsGoals)

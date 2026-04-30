@@ -1,0 +1,2 @@
+ALTER TYPE "public"."transaction_kind" ADD VALUE 'income_fixed' BEFORE 'expense_fixed';--> statement-breakpoint
+ALTER TYPE "public"."transaction_kind" ADD VALUE 'income_variable' BEFORE 'expense_fixed';

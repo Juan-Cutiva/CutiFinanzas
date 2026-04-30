@@ -8,6 +8,7 @@ import {
   PiggyBank,
   Settings,
   Target,
+  TrendingUp,
   Wallet,
 } from 'lucide-react';
 import Link from 'next/link';
@@ -20,6 +21,7 @@ const SECTIONS = [
     items: [
       { href: '/dashboard', label: 'Resumen', icon: Home },
       { href: '/transacciones', label: 'Transacciones', icon: ListOrdered },
+      { href: '/ingresos', label: 'Ingresos', icon: TrendingUp },
       { href: '/cuentas', label: 'Cuentas', icon: Wallet },
     ],
   },

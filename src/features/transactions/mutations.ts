@@ -1,7 +1,7 @@
 import 'server-only';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { accounts, transactions } from '@/db/schema';
+import { accounts, debts, savingsGoals, transactions } from '@/db/schema';
 import { NotFoundError, ValidationError } from '@/lib/errors';
 import type { CurrencyCode } from '@/lib/money';
 import type { UserId } from '@/types/ids';
@@ -47,6 +47,28 @@ export async function createTransaction(userId: UserId, input: TransactionInput)
     })
     .returning();
   if (!row) throw new Error('No se pudo registrar la transacción');
+
+  if (input.kind === 'debt_payment' && input.debtId) {
+    await db
+      .update(debts)
+      .set({
+        currentBalanceMinor: sql`GREATEST(0::bigint, ${debts.currentBalanceMinor} - ${amountMinor.toString()}::bigint)`,
+        paidInstallments: sql`${debts.paidInstallments} + 1`,
+        updatedAt: sql`now()`,
+      })
+      .where(and(eq(debts.userId, userId), eq(debts.id, input.debtId)));
+  }
+
+  if (input.kind === 'savings_contribution' && input.savingsGoalId) {
+    await db
+      .update(savingsGoals)
+      .set({
+        currentAmountMinor: sql`${savingsGoals.currentAmountMinor} + ${amountMinor.toString()}::bigint`,
+        updatedAt: sql`now()`,
+      })
+      .where(and(eq(savingsGoals.userId, userId), eq(savingsGoals.id, input.savingsGoalId)));
+  }
+
   return row;
 }
 

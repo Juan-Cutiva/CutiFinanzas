@@ -1,7 +1,8 @@
 import { z } from 'zod';
 
 const TX_KINDS = [
-  'income',
+  'income_fixed',
+  'income_variable',
   'expense_fixed',
   'expense_variable',
   'transfer',
@@ -10,12 +11,13 @@ const TX_KINDS = [
 ] as const;
 
 export const TX_KIND_LABELS: Record<(typeof TX_KINDS)[number], string> = {
-  income: 'Ingreso',
-  expense_fixed: 'Gasto fijo',
-  expense_variable: 'Gasto variable',
-  transfer: 'Transferencia',
+  income_fixed: 'Ingreso fijo (salario, renta...)',
+  income_variable: 'Ingreso variable (extra, bonificación...)',
+  expense_fixed: 'Gasto fijo (suscripciones, arriendo...)',
+  expense_variable: 'Gasto variable (mercado, gasolina...)',
+  transfer: 'Transferencia entre cuentas',
   debt_payment: 'Pago de deuda',
-  savings_contribution: 'Aporte a ahorro',
+  savings_contribution: 'Aporte a meta de ahorro',
 };
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)');
@@ -25,6 +27,8 @@ export const transactionInputSchema = z
     accountId: z.string().min(1, 'Cuenta requerida'),
     transferAccountId: z.string().nullable().optional(),
     categoryId: z.string().nullable().optional(),
+    debtId: z.string().nullable().optional(),
+    savingsGoalId: z.string().nullable().optional(),
     kind: z.enum(TX_KINDS),
     amount: z.coerce.number().positive('El monto debe ser positivo'),
     currency: z.string().length(3).toUpperCase(),
@@ -42,11 +46,25 @@ export const transactionInputSchema = z
         path: ['transferAccountId'],
       });
     }
-    if (data.kind !== 'transfer' && data.kind !== 'income' && !data.categoryId) {
+    if ((data.kind === 'expense_fixed' || data.kind === 'expense_variable') && !data.categoryId) {
       ctx.addIssue({
         code: 'custom',
         message: 'Selecciona una categoría',
         path: ['categoryId'],
+      });
+    }
+    if (data.kind === 'debt_payment' && !data.debtId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Selecciona la deuda a la que aplica el pago',
+        path: ['debtId'],
+      });
+    }
+    if (data.kind === 'savings_contribution' && !data.savingsGoalId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Selecciona la meta de ahorro',
+        path: ['savingsGoalId'],
       });
     }
     if (data.transferAccountId && data.transferAccountId === data.accountId) {

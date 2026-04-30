@@ -2,6 +2,7 @@ import { PiggyBank } from 'lucide-react';
 import type { Metadata } from 'next';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getOrCreateUser } from '@/db/queries/users';
+import { listAccountsByUser } from '@/features/accounts/queries';
 import { CreateSavingsGoalButton } from '@/features/savings/components/create-savings-button';
 import { SavingsList } from '@/features/savings/components/savings-list';
 import { listSavingsGoals } from '@/features/savings/queries';
@@ -11,7 +12,11 @@ export const dynamic = 'force-dynamic';
 
 export default async function AhorrosPage() {
   const user = await getOrCreateUser();
-  const goals = await listSavingsGoals(user.id as never);
+  const userId = user.id as never;
+  const [goals, accounts] = await Promise.all([
+    listSavingsGoals(userId),
+    listAccountsByUser(userId),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
@@ -32,7 +37,10 @@ export default async function AhorrosPage() {
           description="Fondo de emergencia, viaje, computador nuevo… empieza por una y agrega más después."
         />
       ) : (
-        <SavingsList items={goals} />
+        <SavingsList
+          items={goals}
+          accounts={accounts.map((a) => ({ id: a.id, name: a.name, currency: a.currency }))}
+        />
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import { BarChart3, CreditCard, PiggyBank, Settings, Wallet } from 'lucide-react';
+import { BarChart3, CreditCard, PiggyBank, Settings, TrendingUp, Wallet } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Card } from '@/components/ui/card';
@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card';
 export const metadata: Metadata = { title: 'Más' };
 
 const ITEMS = [
+  { href: '/ingresos', label: 'Ingresos', icon: TrendingUp },
   { href: '/cuentas', label: 'Cuentas', icon: Wallet },
   { href: '/deudas', label: 'Deudas', icon: CreditCard },
   { href: '/ahorros', label: 'Metas de ahorro', icon: PiggyBank },

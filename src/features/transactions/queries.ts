@@ -1,8 +1,17 @@
 import 'server-only';
-import { and, between, desc, eq, sum } from 'drizzle-orm';
+import { and, between, desc, eq, inArray, sum } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { transactions } from '@/db/schema';
 import type { UserId } from '@/types/ids';
+
+const EXPENSE_KINDS = [
+  'expense_fixed',
+  'expense_variable',
+  'debt_payment',
+  'savings_contribution',
+] as const;
+
+const INCOME_KINDS = ['income', 'income_fixed', 'income_variable'] as const;
 
 function monthRange(year: number, month: number): { from: string; to: string } {
   const from = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -24,6 +33,11 @@ export async function listTransactionsByMonth(userId: UserId, year: number, mont
   });
 }
 
+export async function listIncomeByMonth(userId: UserId, year: number, month: number) {
+  const all = await listTransactionsByMonth(userId, year, month);
+  return all.filter((t) => (INCOME_KINDS as readonly string[]).includes(t.kind));
+}
+
 export async function totalsByMonth(userId: UserId, year: number, month: number) {
   const { from, to } = monthRange(year, month);
   const rows = await db
@@ -37,8 +51,13 @@ export async function totalsByMonth(userId: UserId, year: number, month: number)
 
   const map: Record<string, number> = {};
   for (const r of rows) map[r.kind] = r.total ?? 0;
+
+  const incomeFixed = (map.income_fixed ?? 0) + (map.income ?? 0);
+  const incomeVariable = map.income_variable ?? 0;
   return {
-    incomeMinor: map.income ?? 0,
+    incomeMinor: incomeFixed + incomeVariable,
+    incomeFixedMinor: incomeFixed,
+    incomeVariableMinor: incomeVariable,
     expenseFixedMinor: map.expense_fixed ?? 0,
     expenseVariableMinor: map.expense_variable ?? 0,
     debtPaymentMinor: map.debt_payment ?? 0,
@@ -54,7 +73,13 @@ export async function totalsByCategoryByMonth(userId: UserId, year: number, mont
       total: sum(transactions.amountMinor).mapWith(Number),
     })
     .from(transactions)
-    .where(and(eq(transactions.userId, userId), between(transactions.occurredAt, from, to)))
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        between(transactions.occurredAt, from, to),
+        inArray(transactions.kind, [...EXPENSE_KINDS]),
+      ),
+    )
     .groupBy(transactions.categoryId);
   return rows;
 }

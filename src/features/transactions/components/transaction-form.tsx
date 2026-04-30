@@ -2,6 +2,7 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAction } from 'next-safe-action/hooks';
+import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import type { z } from 'zod';
@@ -32,6 +33,7 @@ interface AccountOption {
   id: string;
   name: string;
   currency: string;
+  type: string;
 }
 
 interface CategoryOption {
@@ -39,9 +41,23 @@ interface CategoryOption {
   name: string;
 }
 
+interface DebtOption {
+  id: string;
+  name: string;
+  currency: string;
+}
+
+interface SavingsOption {
+  id: string;
+  name: string;
+  currency: string;
+}
+
 interface Props {
   accounts: AccountOption[];
   categories: CategoryOption[];
+  debts?: DebtOption[];
+  savingsGoals?: SavingsOption[];
   defaultCurrency: string;
   defaultKind?: TransactionInput['kind'];
   onSuccess?: () => void;
@@ -50,6 +66,8 @@ interface Props {
 export function TransactionForm({
   accounts,
   categories,
+  debts = [],
+  savingsGoals = [],
   defaultCurrency,
   defaultKind = 'expense_variable',
   onSuccess,
@@ -62,7 +80,9 @@ export function TransactionForm({
       kind: defaultKind,
       accountId: accounts[0]?.id ?? '',
       transferAccountId: null,
-      categoryId: categories[0]?.id ?? null,
+      categoryId: null,
+      debtId: null,
+      savingsGoalId: null,
       amount: 0,
       currency: accounts[0]?.currency ?? defaultCurrency,
       occurredAt: today,
@@ -74,6 +94,19 @@ export function TransactionForm({
 
   const watchedKind = form.watch('kind');
   const watchedAccountId = form.watch('accountId');
+  const selectedAccount = accounts.find((a) => a.id === watchedAccountId);
+
+  React.useEffect(() => {
+    if (watchedKind === 'expense_fixed' || watchedKind === 'expense_variable') {
+      const current = form.getValues('categoryId');
+      if (!current && categories[0]) form.setValue('categoryId', categories[0].id);
+    } else {
+      form.setValue('categoryId', null);
+    }
+    if (watchedKind !== 'transfer') form.setValue('transferAccountId', null);
+    if (watchedKind !== 'debt_payment') form.setValue('debtId', null);
+    if (watchedKind !== 'savings_contribution') form.setValue('savingsGoalId', null);
+  }, [watchedKind, categories, form]);
 
   const { execute, isPending } = useAction(createTransactionAction, {
     onSuccess: () => {
@@ -81,11 +114,15 @@ export function TransactionForm({
       form.reset({
         kind: defaultKind,
         accountId: accounts[0]?.id ?? '',
-        categoryId: categories[0]?.id ?? null,
+        transferAccountId: null,
+        categoryId: null,
+        debtId: null,
+        savingsGoalId: null,
         amount: 0,
         currency: accounts[0]?.currency ?? defaultCurrency,
         occurredAt: today,
         description: '',
+        notes: '',
         isPaid: true,
       });
       onSuccess?.();
@@ -109,7 +146,10 @@ export function TransactionForm({
   }
 
   const isTransfer = watchedKind === 'transfer';
-  const needsCategory = !isTransfer && watchedKind !== 'income';
+  const isExpense = watchedKind === 'expense_fixed' || watchedKind === 'expense_variable';
+  const isDebtPayment = watchedKind === 'debt_payment';
+  const isSavingsContribution = watchedKind === 'savings_contribution';
+  const accountIsCreditCard = selectedAccount?.type === 'credit_card';
 
   return (
     <Form {...form}>
@@ -193,6 +233,13 @@ export function TransactionForm({
           )}
         />
 
+        {accountIsCreditCard && watchedKind.startsWith('income') ? (
+          <p className="rounded-md border border-[color:var(--warning)]/40 bg-[color:var(--warning)]/10 px-3 py-2 text-xs text-[color:var(--warning)]">
+            Tip: si estás pagando tu tarjeta, usa <strong>Pago de deuda</strong> y elige la tarjeta
+            como deuda. Aquí estarías sumando saldo a la tarjeta misma.
+          </p>
+        ) : null}
+
         {isTransfer ? (
           <FormField
             control={form.control}
@@ -220,7 +267,9 @@ export function TransactionForm({
               </FormItem>
             )}
           />
-        ) : needsCategory ? (
+        ) : null}
+
+        {isExpense ? (
           <FormField
             control={form.control}
             name="categoryId"
@@ -239,6 +288,72 @@ export function TransactionForm({
                         {c.name}
                       </SelectItem>
                     ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        ) : null}
+
+        {isDebtPayment ? (
+          <FormField
+            control={form.control}
+            name="debtId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Deuda</FormLabel>
+                <Select value={field.value ?? ''} onValueChange={field.onChange}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona la deuda" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {debts.length === 0 ? (
+                      <SelectItem value="-" disabled>
+                        Sin deudas activas
+                      </SelectItem>
+                    ) : (
+                      debts.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name} · {d.currency}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        ) : null}
+
+        {isSavingsContribution ? (
+          <FormField
+            control={form.control}
+            name="savingsGoalId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Meta de ahorro</FormLabel>
+                <Select value={field.value ?? ''} onValueChange={field.onChange}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecciona la meta" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {savingsGoals.length === 0 ? (
+                      <SelectItem value="-" disabled>
+                        Sin metas activas
+                      </SelectItem>
+                    ) : (
+                      savingsGoals.map((g) => (
+                        <SelectItem key={g.id} value={g.id}>
+                          {g.name} · {g.currency}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
                 <FormMessage />

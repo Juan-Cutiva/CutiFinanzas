@@ -16,6 +16,7 @@ interface AccountOption {
   id: string;
   name: string;
   currency: string;
+  type: string;
 }
 
 interface CategoryOption {
@@ -23,13 +24,33 @@ interface CategoryOption {
   name: string;
 }
 
+interface DebtOption {
+  id: string;
+  name: string;
+  currency: string;
+}
+
+interface SavingsOption {
+  id: string;
+  name: string;
+  currency: string;
+}
+
 interface Props {
   accounts: AccountOption[];
   categories: CategoryOption[];
+  debts: DebtOption[];
+  savingsGoals: SavingsOption[];
   defaultCurrency: string;
 }
 
-export function QuickAddDrawer({ accounts, categories, defaultCurrency }: Props) {
+export function QuickAddDrawer({
+  accounts,
+  categories,
+  debts,
+  savingsGoals,
+  defaultCurrency,
+}: Props) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -54,6 +75,8 @@ export function QuickAddDrawer({ accounts, categories, defaultCurrency }: Props)
             <TransactionForm
               accounts={accounts}
               categories={categories}
+              debts={debts}
+              savingsGoals={savingsGoals}
               defaultCurrency={defaultCurrency}
               onSuccess={() => setOpen(false)}
             />

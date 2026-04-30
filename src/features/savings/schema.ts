@@ -27,5 +27,10 @@ export const deleteSavingsGoalSchema = z.object({ id: z.string().min(1) });
 export const contributeSchema = z.object({
   id: z.string().min(1),
   amount: z.coerce.number().positive(),
+  accountId: z.string().min(1, 'Cuenta requerida'),
+  occurredAt: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida')
+    .optional(),
 });
 export type ContributeInput = z.infer<typeof contributeSchema>;

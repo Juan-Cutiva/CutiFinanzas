@@ -2,6 +2,8 @@ import { pgEnum } from 'drizzle-orm/pg-core';
 
 export const transactionKind = pgEnum('transaction_kind', [
   'income',
+  'income_fixed',
+  'income_variable',
   'expense_fixed',
   'expense_variable',
   'transfer',

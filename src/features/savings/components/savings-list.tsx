@@ -18,6 +18,13 @@ import {
 import { Label } from '@/components/ui/label';
 import { MoneyInput } from '@/components/ui/money-input';
 import { Progress } from '@/components/ui/progress';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { formatAmount } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import { contributeToGoalAction, deleteSavingsGoalAction } from '../actions';
@@ -33,16 +40,29 @@ export interface SavingsGoalItem {
   targetDate: string | null;
 }
 
-export function SavingsList({ items }: { items: SavingsGoalItem[] }) {
+export interface AccountOption {
+  id: string;
+  name: string;
+  currency: string;
+}
+
+interface Props {
+  items: SavingsGoalItem[];
+  accounts: AccountOption[];
+}
+
+export function SavingsList({ items, accounts }: Props) {
   const [contributing, setContributing] = useState<SavingsGoalItem | null>(null);
   const [deleting, setDeleting] = useState<SavingsGoalItem | null>(null);
   const [amount, setAmount] = useState<number | undefined>(undefined);
+  const [accountId, setAccountId] = useState<string>('');
 
   const contribute = useAction(contributeToGoalAction, {
     onSuccess: () => {
       toast.success('Aporte registrado');
       setContributing(null);
       setAmount(undefined);
+      setAccountId('');
     },
     onError: ({ error }) => toast.error(error.serverError ?? 'Error'),
   });
@@ -54,6 +74,16 @@ export function SavingsList({ items }: { items: SavingsGoalItem[] }) {
     },
     onError: ({ error }) => toast.error(error.serverError ?? 'Error'),
   });
+
+  function openContribute(g: SavingsGoalItem) {
+    const matching = accounts.find((a) => a.currency === g.currency);
+    setAccountId(matching?.id ?? '');
+    setContributing(g);
+  }
+
+  const compatibleAccounts = contributing
+    ? accounts.filter((a) => a.currency === contributing.currency)
+    : accounts;
 
   return (
     <>
@@ -111,7 +141,7 @@ export function SavingsList({ items }: { items: SavingsGoalItem[] }) {
                   size="sm"
                   variant="outline"
                   className="w-full"
-                  onClick={() => setContributing(g)}
+                  onClick={() => openContribute(g)}
                   disabled={reached}
                 >
                   Registrar aporte
@@ -126,27 +156,52 @@ export function SavingsList({ items }: { items: SavingsGoalItem[] }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Aportar a {contributing?.name}</DialogTitle>
-            <DialogDescription>Suma este monto al ahorro acumulado de la meta.</DialogDescription>
+            <DialogDescription>
+              Resta del saldo de la cuenta de origen y suma al acumulado de la meta.
+            </DialogDescription>
           </DialogHeader>
-          <div className="grid gap-2">
-            <Label htmlFor="contribute-amount">Monto</Label>
-            <MoneyInput
-              id="contribute-amount"
-              autoFocus
-              className="font-mono tabular-nums"
-              value={amount}
-              onChange={setAmount}
-            />
+          <div className="grid gap-3">
+            <div className="grid gap-2">
+              <Label htmlFor="contribute-amount">Monto</Label>
+              <MoneyInput
+                id="contribute-amount"
+                autoFocus
+                className="font-mono tabular-nums"
+                value={amount}
+                onChange={setAmount}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="contribute-account">Cuenta de origen</Label>
+              {compatibleAccounts.length === 0 ? (
+                <p className="text-xs text-destructive">
+                  No hay cuentas en {contributing?.currency}. Crea una primero.
+                </p>
+              ) : (
+                <Select value={accountId} onValueChange={setAccountId}>
+                  <SelectTrigger id="contribute-account">
+                    <SelectValue placeholder="Selecciona cuenta" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {compatibleAccounts.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name} · {a.currency}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
           </div>
           <DialogFooter>
             <Button variant="ghost" onClick={() => setContributing(null)}>
               Cancelar
             </Button>
             <Button
-              disabled={contribute.isPending || !amount}
+              disabled={contribute.isPending || !amount || !accountId}
               onClick={() => {
-                if (!contributing || !amount) return;
-                contribute.execute({ id: contributing.id, amount });
+                if (!contributing || !amount || !accountId) return;
+                contribute.execute({ id: contributing.id, amount, accountId });
               }}
             >
               {contribute.isPending ? 'Guardando…' : 'Aportar'}
