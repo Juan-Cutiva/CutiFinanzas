@@ -2,6 +2,7 @@ import 'server-only';
 import { auth } from '@clerk/nextjs/server';
 import { createSafeActionClient, DEFAULT_SERVER_ERROR_MESSAGE } from 'next-safe-action';
 import { z } from 'zod';
+import { getOrCreateUser } from '@/db/queries/users';
 import type { UserId } from '@/types/ids';
 import { AppError, UnauthorizedError } from './errors';
 
@@ -27,5 +28,6 @@ export const actionClient = createSafeActionClient({
 export const authedAction = actionClient.use(async ({ next }) => {
   const { userId } = await auth();
   if (!userId) throw new UnauthorizedError();
-  return next({ ctx: { userId: userId as UserId } });
+  const user = await getOrCreateUser();
+  return next({ ctx: { userId: user.id as UserId, user } });
 });

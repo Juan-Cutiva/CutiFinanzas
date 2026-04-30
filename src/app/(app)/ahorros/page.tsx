@@ -1,29 +1,39 @@
 import { PiggyBank } from 'lucide-react';
 import type { Metadata } from 'next';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { EmptyState } from '@/components/ui/empty-state';
+import { getOrCreateUser } from '@/db/queries/users';
+import { CreateSavingsGoalButton } from '@/features/savings/components/create-savings-button';
+import { SavingsList } from '@/features/savings/components/savings-list';
+import { listSavingsGoals } from '@/features/savings/queries';
 
 export const metadata: Metadata = { title: 'Metas de ahorro' };
+export const dynamic = 'force-dynamic';
 
-export default function AhorrosPage() {
+export default async function AhorrosPage() {
+  const user = await getOrCreateUser();
+  const goals = await listSavingsGoals(user.id as never);
+
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
-      <header>
-        <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Metas de ahorro</h2>
-        <p className="text-sm text-muted-foreground">
-          Define objetivos y aporta cada mes para alcanzarlos.
-        </p>
+      <header className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Metas de ahorro</h2>
+          <p className="text-sm text-muted-foreground">
+            Define objetivos y aporta cada mes para alcanzarlos.
+          </p>
+        </div>
+        <CreateSavingsGoalButton defaultCurrency={user.defaultCurrency} />
       </header>
 
-      <Card>
-        <CardHeader className="items-center text-center">
-          <PiggyBank className="size-10 text-muted-foreground/50" aria-hidden />
-          <CardTitle>¿Cuál es tu próxima meta?</CardTitle>
-          <CardDescription>
-            Fondo de emergencia, viaje, computador nuevo… empieza por una y agrega más después.
-          </CardDescription>
-        </CardHeader>
-        <CardContent />
-      </Card>
+      {goals.length === 0 ? (
+        <EmptyState
+          icon={PiggyBank}
+          title="¿Cuál es tu próxima meta?"
+          description="Fondo de emergencia, viaje, computador nuevo… empieza por una y agrega más después."
+        />
+      ) : (
+        <SavingsList items={goals} />
+      )}
     </div>
   );
 }

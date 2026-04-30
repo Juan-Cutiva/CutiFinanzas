@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, Suspense } from 'react';
 import { BottomNav } from '@/components/layout/bottom-nav';
 import { Header } from '@/components/layout/header';
 import { QuickAddFAB } from '@/components/layout/quick-add-fab';
@@ -13,7 +13,9 @@ export default function AppLayout({ children }: { children: ReactNode }) {
         <main className="flex-1 px-4 pb-24 pt-4 md:px-8 md:pb-8">{children}</main>
         <BottomNav />
       </div>
-      <QuickAddFAB />
+      <Suspense fallback={null}>
+        <QuickAddFAB />
+      </Suspense>
     </div>
   );
 }
