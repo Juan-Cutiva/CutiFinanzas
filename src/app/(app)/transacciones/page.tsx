@@ -10,10 +10,19 @@ import { dayjs } from '@/lib/format';
 export const metadata: Metadata = { title: 'Transacciones' };
 export const dynamic = 'force-dynamic';
 
-export default async function TransaccionesPage() {
+interface PageProps {
+  searchParams: Promise<{ y?: string; m?: string }>;
+}
+
+export default async function TransaccionesPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
+  const params = await searchParams;
   const now = dayjs();
-  const items = await listTransactionsByMonth(user.id as never, now.year(), now.month() + 1);
+  const year = Number.parseInt(params.y ?? String(now.year()), 10);
+  const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
+  const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
+
+  const items = await listTransactionsByMonth(user.id as never, year, month);
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
@@ -21,7 +30,7 @@ export default async function TransaccionesPage() {
         <div>
           <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Transacciones</h2>
           <p className="text-sm text-muted-foreground">
-            {now.format('MMMM YYYY')} — toca el botón ＋ para registrar.
+            {monthLabel} — toca el botón ＋ para registrar.
           </p>
         </div>
         <CloneMonthButton />

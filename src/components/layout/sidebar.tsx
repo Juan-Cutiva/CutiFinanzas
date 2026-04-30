@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useMonthQuery, withMonth } from '@/lib/use-month-href';
 import { cn } from '@/lib/utils';
 
 const SECTIONS = [
@@ -44,6 +45,7 @@ const SECTIONS = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const monthQs = useMonthQuery();
 
   return (
     <aside
@@ -70,7 +72,7 @@ export function Sidebar() {
                 return (
                   <li key={href}>
                     <Link
-                      href={href}
+                      href={withMonth(href, monthQs)}
                       aria-current={active ? 'page' : undefined}
                       className={cn(
                         'flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors',

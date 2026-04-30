@@ -22,13 +22,19 @@ import type { CurrencyCode } from '@/lib/money';
 export const metadata: Metadata = { title: 'Reportes' };
 export const dynamic = 'force-dynamic';
 
-export default async function ReportesPage() {
+interface PageProps {
+  searchParams: Promise<{ y?: string; m?: string }>;
+}
+
+export default async function ReportesPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
   const userId = user.id as never;
   const currency = user.defaultCurrency as CurrencyCode;
+  const params = await searchParams;
   const now = dayjs();
-  const year = now.year();
-  const month = now.month() + 1;
+  const year = Number.parseInt(params.y ?? String(now.year()), 10);
+  const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
+  const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
 
   const [totals, categories, byCategory, daily, insights] = await Promise.all([
     totalsByMonth(userId, year, month),
@@ -67,7 +73,7 @@ export default async function ReportesPage() {
         <div>
           <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Reportes</h2>
           <p className="text-sm text-muted-foreground">
-            {now.format('MMMM YYYY')} — análisis del mes y exportación a PDF.
+            {monthLabel} — análisis del mes y exportación a PDF.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

@@ -12,12 +12,18 @@ import { dayjs } from '@/lib/format';
 export const metadata: Metadata = { title: 'Presupuestos' };
 export const dynamic = 'force-dynamic';
 
-export default async function PresupuestosPage() {
+interface PageProps {
+  searchParams: Promise<{ y?: string; m?: string }>;
+}
+
+export default async function PresupuestosPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
   const userId = user.id as never;
+  const params = await searchParams;
   const now = dayjs();
-  const year = now.year();
-  const month = now.month() + 1;
+  const year = Number.parseInt(params.y ?? String(now.year()), 10);
+  const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
+  const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
 
   const [budgets, categories, spentByCategory] = await Promise.all([
     listBudgetsByMonth(userId, year, month),
@@ -39,7 +45,7 @@ export default async function PresupuestosPage() {
         <div>
           <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Presupuestos</h2>
           <p className="text-sm text-muted-foreground">
-            {now.format('MMMM YYYY')} — define cuánto puedes gastar por categoría.
+            {monthLabel} — define cuánto puedes gastar por categoría.
           </p>
         </div>
         <CreateBudgetButton

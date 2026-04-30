@@ -11,13 +11,19 @@ import type { CurrencyCode } from '@/lib/money';
 export const metadata: Metadata = { title: 'Ingresos' };
 export const dynamic = 'force-dynamic';
 
-export default async function IngresosPage() {
+interface PageProps {
+  searchParams: Promise<{ y?: string; m?: string }>;
+}
+
+export default async function IngresosPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
   const userId = user.id as never;
   const currency = user.defaultCurrency as CurrencyCode;
+  const params = await searchParams;
   const now = dayjs();
-  const year = now.year();
-  const month = now.month() + 1;
+  const year = Number.parseInt(params.y ?? String(now.year()), 10);
+  const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
+  const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
 
   const [items, totals] = await Promise.all([
     listIncomeByMonth(userId, year, month),
@@ -29,7 +35,7 @@ export default async function IngresosPage() {
       <header>
         <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Ingresos</h2>
         <p className="text-sm text-muted-foreground">
-          {now.format('MMMM YYYY')} — salarios, rentas, extras y bonificaciones.
+          {monthLabel} — salarios, rentas, extras y bonificaciones.
         </p>
       </header>
 

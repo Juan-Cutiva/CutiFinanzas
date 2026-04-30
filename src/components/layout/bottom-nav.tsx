@@ -3,6 +3,7 @@
 import { Home, ListOrdered, MoreHorizontal, Target } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useMonthQuery, withMonth } from '@/lib/use-month-href';
 import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
@@ -14,6 +15,7 @@ const NAV_ITEMS = [
 
 export function BottomNav() {
   const pathname = usePathname();
+  const monthQs = useMonthQuery();
 
   return (
     <nav
@@ -29,7 +31,7 @@ export function BottomNav() {
           return (
             <li key={href}>
               <Link
-                href={href}
+                href={withMonth(href, monthQs)}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
                   'flex h-16 flex-col items-center justify-center gap-1 text-[11px] font-medium transition-colors',

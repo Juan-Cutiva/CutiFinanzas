@@ -26,13 +26,19 @@ function greeting(): string {
   return 'Buenas noches';
 }
 
-export default async function DashboardPage() {
+interface PageProps {
+  searchParams: Promise<{ y?: string; m?: string }>;
+}
+
+export default async function DashboardPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
   const userId = user.id as never;
   const currency = user.defaultCurrency as CurrencyCode;
+  const params = await searchParams;
   const now = dayjs();
-  const year = now.year();
-  const month = now.month() + 1;
+  const year = Number.parseInt(params.y ?? String(now.year()), 10);
+  const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
+  const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
 
   const periods = periodsForMonth(year, month, user.payFrequency as PayFrequency);
 
@@ -67,7 +73,7 @@ export default async function DashboardPage() {
           {greeting()}
           {user.name ? `, ${user.name.split(' ')[0]}` : ''}
         </h2>
-        <p className="text-sm text-muted-foreground">Resumen de {now.format('MMMM YYYY')}.</p>
+        <p className="text-sm text-muted-foreground">Resumen de {monthLabel}.</p>
       </header>
 
       <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
