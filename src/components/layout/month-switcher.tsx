@@ -28,14 +28,6 @@ const MONTH_LABELS = [
   'Diciembre',
 ];
 
-const VISIBLE_PATHS = new Set([
-  '/dashboard',
-  '/transacciones',
-  '/ingresos',
-  '/presupuestos',
-  '/reportes',
-]);
-
 export function MonthSwitcher() {
   const pathname = usePathname();
   const router = useRouter();
@@ -50,8 +42,6 @@ export function MonthSwitcher() {
     const current = now.year();
     return Array.from({ length: 6 }, (_, i) => current - 2 + i);
   }, [now]);
-
-  if (!VISIBLE_PATHS.has(pathname ?? '')) return null;
 
   function navigate(year: number, month: number) {
     const params = new URLSearchParams(search?.toString() ?? '');
