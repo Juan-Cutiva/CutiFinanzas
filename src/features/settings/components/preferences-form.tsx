@@ -26,6 +26,7 @@ import { updateUserPreferencesAction } from '../actions';
 import {
   COMMON_LOCALES,
   COMMON_TIMEZONES,
+  PAY_FREQUENCY_LABELS,
   type UpdateUserPreferencesInput,
   updateUserPreferencesSchema,
 } from '../schema';
@@ -36,6 +37,7 @@ interface Props {
     defaultCurrency: string;
     locale: string;
     timezone: string;
+    payFrequency: 'weekly' | 'biweekly' | 'monthly';
   };
 }
 
@@ -47,6 +49,7 @@ export function PreferencesForm({ defaults }: Props) {
       defaultCurrency: defaults.defaultCurrency,
       locale: defaults.locale,
       timezone: defaults.timezone,
+      payFrequency: defaults.payFrequency,
     },
   });
 
@@ -116,6 +119,31 @@ export function PreferencesForm({ defaults }: Props) {
                   {COMMON_LOCALES.map((l) => (
                     <SelectItem key={l.code} value={l.code}>
                       {l.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="payFrequency"
+          render={({ field }) => (
+            <FormItem className="md:col-span-2">
+              <FormLabel>Frecuencia de pago</FormLabel>
+              <Select value={field.value} onValueChange={field.onChange}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {Object.entries(PAY_FREQUENCY_LABELS).map(([k, label]) => (
+                    <SelectItem key={k} value={k}>
+                      {label}
                     </SelectItem>
                   ))}
                 </SelectContent>

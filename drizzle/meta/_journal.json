@@ -15,6 +15,13 @@
       "when": 1777582471269,
       "tag": "0001_dizzy_dreadnoughts",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777583714313,
+      "tag": "0002_glossy_aaron_stack",
+      "breakpoints": true
     }
   ]
 }

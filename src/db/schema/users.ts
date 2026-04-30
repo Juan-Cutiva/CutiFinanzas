@@ -10,6 +10,7 @@ export const users = pgTable('users', {
   defaultCurrency: char('default_currency', { length: 3 }).notNull().default('COP'),
   locale: varchar('locale', { length: 10 }).notNull().default('es-CO'),
   timezone: varchar('timezone', { length: 64 }).notNull().default('America/Bogota'),
+  payFrequency: varchar('pay_frequency', { length: 20 }).notNull().default('biweekly'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().default(sql`now()`),
 });

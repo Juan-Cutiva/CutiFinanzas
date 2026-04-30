@@ -1,0 +1,1 @@
+ALTER TABLE "users" ADD COLUMN "pay_frequency" varchar(20) DEFAULT 'biweekly' NOT NULL;

@@ -6,6 +6,7 @@ import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import type { z } from 'zod';
 import { Button } from '@/components/ui/button';
+import { DatePicker } from '@/components/ui/date-picker';
 import {
   Form,
   FormControl,
@@ -173,7 +174,7 @@ export function SavingsGoalForm({ defaultCurrency, onSuccess }: Props) {
               <FormItem>
                 <FormLabel>Inicio</FormLabel>
                 <FormControl>
-                  <Input type="date" {...field} value={field.value ?? ''} />
+                  <DatePicker value={field.value ?? ''} onChange={field.onChange} />
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -186,7 +187,11 @@ export function SavingsGoalForm({ defaultCurrency, onSuccess }: Props) {
               <FormItem>
                 <FormLabel>Fecha meta (opcional)</FormLabel>
                 <FormControl>
-                  <Input type="date" {...field} value={field.value ?? ''} />
+                  <DatePicker
+                    value={field.value ?? ''}
+                    onChange={field.onChange}
+                    placeholder="Sin fecha meta"
+                  />
                 </FormControl>
                 <FormMessage />
               </FormItem>

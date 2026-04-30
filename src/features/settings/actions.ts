@@ -16,6 +16,7 @@ export const updateUserPreferencesAction = authedAction
     if (parsedInput.locale) patch.locale = parsedInput.locale;
     if (parsedInput.timezone) patch.timezone = parsedInput.timezone;
     if (parsedInput.name !== undefined) patch.name = parsedInput.name || null;
+    if (parsedInput.payFrequency) patch.payFrequency = parsedInput.payFrequency;
 
     const [row] = await db.update(users).set(patch).where(eq(users.id, ctx.userId)).returning();
 

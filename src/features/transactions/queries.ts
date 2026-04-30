@@ -65,6 +65,33 @@ export async function totalsByMonth(userId: UserId, year: number, month: number)
   };
 }
 
+export async function totalsForRange(userId: UserId, fromDate: string, toDate: string) {
+  const rows = await db
+    .select({
+      kind: transactions.kind,
+      total: sum(transactions.amountMinor).mapWith(Number),
+    })
+    .from(transactions)
+    .where(and(eq(transactions.userId, userId), between(transactions.occurredAt, fromDate, toDate)))
+    .groupBy(transactions.kind);
+
+  const map: Record<string, number> = {};
+  for (const r of rows) map[r.kind] = r.total ?? 0;
+
+  const incomeFixed = (map.income_fixed ?? 0) + (map.income ?? 0);
+  const incomeVariable = map.income_variable ?? 0;
+  const expense =
+    (map.expense_fixed ?? 0) +
+    (map.expense_variable ?? 0) +
+    (map.debt_payment ?? 0) +
+    (map.savings_contribution ?? 0);
+  return {
+    incomeMinor: incomeFixed + incomeVariable,
+    expenseMinor: expense,
+    balanceMinor: incomeFixed + incomeVariable - expense,
+  };
+}
+
 export async function totalsByCategoryByMonth(userId: UserId, year: number, month: number) {
   const { from, to } = monthRange(year, month);
   const rows = await db

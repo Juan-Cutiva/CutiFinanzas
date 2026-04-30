@@ -35,6 +35,7 @@ export default async function AjustesPage() {
               defaultCurrency: user.defaultCurrency,
               locale: user.locale,
               timezone: user.timezone,
+              payFrequency: user.payFrequency as 'weekly' | 'biweekly' | 'monthly',
             }}
           />
           <p className="mt-4 text-xs text-muted-foreground">
