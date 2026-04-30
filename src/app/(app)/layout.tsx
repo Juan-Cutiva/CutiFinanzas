@@ -1,6 +1,7 @@
 import { type ReactNode, Suspense } from 'react';
 import { BottomNav } from '@/components/layout/bottom-nav';
 import { Header } from '@/components/layout/header';
+import { KeyboardShortcuts } from '@/components/layout/keyboard-shortcuts';
 import { QuickAddFAB } from '@/components/layout/quick-add-fab';
 import { Sidebar } from '@/components/layout/sidebar';
 
@@ -16,6 +17,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       <Suspense fallback={null}>
         <QuickAddFAB />
       </Suspense>
+      <KeyboardShortcuts />
     </div>
   );
 }

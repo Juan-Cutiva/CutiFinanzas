@@ -1,12 +1,21 @@
-import { BarChart3, Download } from 'lucide-react';
+import { BarChart3, Calendar, Download } from 'lucide-react';
 import type { Metadata } from 'next';
+import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getOrCreateUser } from '@/db/queries/users';
 import { listCategoriesByUser } from '@/features/categories/queries';
 import { CategoryChart } from '@/features/reports/components/category-chart';
-import { totalsByCategoryByMonth, totalsByMonth } from '@/features/transactions/queries';
+import { CategoryInsights } from '@/features/reports/components/category-insights';
+import { ExpenseHeatmap } from '@/features/reports/components/expense-heatmap';
+import { SankeyFlow } from '@/features/reports/components/sankey-flow';
+import { categoryInsights } from '@/features/reports/predictions';
+import {
+  dailyTotalsForMonth,
+  totalsByCategoryByMonth,
+  totalsByMonth,
+} from '@/features/transactions/queries';
 import { dayjs, formatAmount } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 
@@ -21,20 +30,19 @@ export default async function ReportesPage() {
   const year = now.year();
   const month = now.month() + 1;
 
-  const [totals, categories, byCategory] = await Promise.all([
+  const [totals, categories, byCategory, daily, insights] = await Promise.all([
     totalsByMonth(userId, year, month),
     listCategoriesByUser(userId),
     totalsByCategoryByMonth(userId, year, month),
+    dailyTotalsForMonth(userId, year, month),
+    categoryInsights(userId, year, month, 3),
   ]);
 
   const totalIncome = totals.incomeMinor / 100;
   const totalExpense =
-    (totals.expenseFixedMinor +
-      totals.expenseVariableMinor +
-      totals.debtPaymentMinor +
-      totals.savingsContributionMinor) /
-    100;
-  const balance = totalIncome - totalExpense;
+    (totals.expenseFixedMinor + totals.expenseVariableMinor + totals.debtPaymentMinor) / 100;
+  const totalSavings = totals.savingsContributionMinor / 100;
+  const balance = totalIncome - totalExpense - totalSavings;
 
   const chartData = categories
     .map((c) => ({
@@ -45,27 +53,41 @@ export default async function ReportesPage() {
     .filter((d) => d.value > 0)
     .sort((a, b) => b.value - a.value);
 
-  const hasData = chartData.length > 0;
+  const sankeyExpenses = chartData.map((d) => ({
+    name: d.name,
+    value: d.value,
+    color: d.color,
+  }));
+
+  const hasData = chartData.length > 0 || totals.incomeMinor > 0;
 
   return (
-    <div className="mx-auto w-full max-w-4xl space-y-6">
-      <header className="flex items-start justify-between gap-4">
+    <div className="mx-auto w-full max-w-5xl space-y-6">
+      <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Reportes</h2>
           <p className="text-sm text-muted-foreground">
             {now.format('MMMM YYYY')} — análisis del mes y exportación a PDF.
           </p>
         </div>
-        <Button asChild>
-          <a
-            href={`/api/reports/monthly?year=${year}&month=${month}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            <Download className="size-4" aria-hidden />
-            Descargar PDF
-          </a>
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button asChild variant="outline">
+            <Link href="/reportes/anual">
+              <Calendar className="size-4" aria-hidden />
+              Reporte anual
+            </Link>
+          </Button>
+          <Button asChild>
+            <a
+              href={`/api/reports/monthly?year=${year}&month=${month}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <Download className="size-4" aria-hidden />
+              Descargar PDF
+            </a>
+          </Button>
+        </div>
       </header>
 
       <section className="grid gap-3 sm:grid-cols-3">
@@ -78,23 +100,62 @@ export default async function ReportesPage() {
         />
       </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Gastos por categoría</CardTitle>
-          <CardDescription>Distribución de gastos del mes en curso.</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {hasData ? (
-            <CategoryChart data={chartData} currency={currency} />
-          ) : (
-            <EmptyState
-              icon={BarChart3}
-              title="Aún no hay datos"
-              description="Cuando registres gastos, aparecerán graficados por categoría aquí."
-            />
-          )}
-        </CardContent>
-      </Card>
+      {!hasData ? (
+        <EmptyState
+          icon={BarChart3}
+          title="Aún no hay datos"
+          description="Cuando registres ingresos y gastos, aparecerán graficados por categoría aquí."
+        />
+      ) : (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Gastos por categoría</CardTitle>
+              <CardDescription>Distribución de gastos del mes en curso.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <CategoryChart data={chartData} currency={currency} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Flujo del mes</CardTitle>
+              <CardDescription>Cómo se distribuye tu ingreso entre cada categoría.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <SankeyFlow
+                income={totalIncome}
+                expenses={sankeyExpenses}
+                savings={totalSavings}
+                currency={currency}
+              />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Mapa de gastos diario</CardTitle>
+              <CardDescription>
+                Más oscuro = más gasto. Pasa el cursor sobre un día para ver el monto.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ExpenseHeatmap data={daily} year={year} month={month} currency={currency} />
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Tendencia vs meses anteriores</CardTitle>
+              <CardDescription>Comparación con tu promedio de los últimos 3 meses.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <CategoryInsights insights={insights} currency={currency} />
+            </CardContent>
+          </Card>
+        </>
+      )}
     </div>
   );
 }

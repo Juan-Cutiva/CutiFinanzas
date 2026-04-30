@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, between, desc, eq, inArray, sum } from 'drizzle-orm';
+import { and, between, desc, eq, inArray, sql, sum } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { transactions } from '@/db/schema';
 import type { UserId } from '@/types/ids';
@@ -90,6 +90,75 @@ export async function totalsForRange(userId: UserId, fromDate: string, toDate: s
     expenseMinor: expense,
     balanceMinor: incomeFixed + incomeVariable - expense,
   };
+}
+
+export async function totalsByMonthForYear(userId: UserId, year: number) {
+  const rows = await db
+    .select({
+      month: sql<string>`to_char(${transactions.occurredAt}::date, 'MM')`,
+      kind: transactions.kind,
+      total: sum(transactions.amountMinor).mapWith(Number),
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        sql`extract(year from ${transactions.occurredAt}::date) = ${year}`,
+      ),
+    )
+    .groupBy(sql`to_char(${transactions.occurredAt}::date, 'MM')`, transactions.kind);
+
+  type Bucket = { incomeMinor: number; expenseMinor: number };
+  const buckets: Record<number, Bucket> = {};
+  for (let m = 1; m <= 12; m++) buckets[m] = { incomeMinor: 0, expenseMinor: 0 };
+
+  for (const r of rows) {
+    const m = Number.parseInt(r.month, 10);
+    const bucket = buckets[m];
+    if (!bucket) continue;
+    if (r.kind === 'income' || r.kind === 'income_fixed' || r.kind === 'income_variable') {
+      bucket.incomeMinor += r.total ?? 0;
+    } else if (r.kind !== 'transfer') {
+      bucket.expenseMinor += r.total ?? 0;
+    }
+  }
+
+  return Array.from({ length: 12 }, (_, i) => {
+    const b = buckets[i + 1] ?? { incomeMinor: 0, expenseMinor: 0 };
+    return {
+      month: i + 1,
+      incomeMinor: b.incomeMinor,
+      expenseMinor: b.expenseMinor,
+      balanceMinor: b.incomeMinor - b.expenseMinor,
+    };
+  });
+}
+
+export async function dailyTotalsForMonth(userId: UserId, year: number, month: number) {
+  const { from, to } = monthRange(year, month);
+  const rows = await db
+    .select({
+      day: sql<string>`to_char(${transactions.occurredAt}::date, 'YYYY-MM-DD')`,
+      kind: transactions.kind,
+      total: sum(transactions.amountMinor).mapWith(Number),
+    })
+    .from(transactions)
+    .where(and(eq(transactions.userId, userId), between(transactions.occurredAt, from, to)))
+    .groupBy(sql`to_char(${transactions.occurredAt}::date, 'YYYY-MM-DD')`, transactions.kind);
+
+  const map: Record<string, number> = {};
+  for (const r of rows) {
+    if (
+      r.kind === 'income' ||
+      r.kind === 'income_fixed' ||
+      r.kind === 'income_variable' ||
+      r.kind === 'transfer'
+    ) {
+      continue;
+    }
+    map[r.day] = (map[r.day] ?? 0) + (r.total ?? 0);
+  }
+  return map;
 }
 
 export async function totalsByCategoryByMonth(userId: UserId, year: number, month: number) {

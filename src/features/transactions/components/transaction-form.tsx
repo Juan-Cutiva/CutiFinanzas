@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import type { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
+import { FileUpload } from '@/components/ui/file-upload';
 import {
   Form,
   FormControl,
@@ -403,6 +404,20 @@ export function TransactionForm({
               <FormLabel>Notas (opcional)</FormLabel>
               <FormControl>
                 <Textarea rows={2} {...field} value={field.value ?? ''} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <FormField
+          control={form.control}
+          name="receiptUrl"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Comprobante (opcional)</FormLabel>
+              <FormControl>
+                <FileUpload value={field.value ?? undefined} onChange={field.onChange} />
               </FormControl>
               <FormMessage />
             </FormItem>
