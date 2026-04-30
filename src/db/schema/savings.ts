@@ -24,11 +24,13 @@ export const savingsGoals = pgTable(
     accountId: text('account_id').references(() => accounts.id, { onDelete: 'set null' }),
     name: varchar('name', { length: 200 }).notNull(),
     targetAmountMinor: bigint('target_amount_minor', { mode: 'bigint' }).notNull(),
-    currentAmountMinor: bigint('current_amount_minor', { mode: 'bigint' }).notNull().default(0n),
+    currentAmountMinor: bigint('current_amount_minor', { mode: 'bigint' })
+      .notNull()
+      .default(sql`0`),
     currency: char('currency', { length: 3 }).notNull(),
     monthlyContributionMinor: bigint('monthly_contribution_minor', { mode: 'bigint' })
       .notNull()
-      .default(0n),
+      .default(sql`0`),
     autoAllocatePercent: numeric('auto_allocate_percent', { precision: 5, scale: 2 }),
     startDate: date('start_date').notNull(),
     targetDate: date('target_date'),

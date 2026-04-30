@@ -22,7 +22,9 @@ export const accounts = pgTable(
     name: varchar('name', { length: 100 }).notNull(),
     type: accountType('type').notNull(),
     currency: char('currency', { length: 3 }).notNull(),
-    initialBalanceMinor: bigint('initial_balance_minor', { mode: 'bigint' }).notNull().default(0n),
+    initialBalanceMinor: bigint('initial_balance_minor', { mode: 'bigint' })
+      .notNull()
+      .default(sql`0`),
     creditLimitMinor: bigint('credit_limit_minor', { mode: 'bigint' }),
     statementDay: integer('statement_day'),
     paymentDueDay: integer('payment_due_day'),
