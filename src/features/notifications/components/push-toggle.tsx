@@ -148,12 +148,35 @@ export function PushToggle({ vapidPublicKey }: Props) {
     );
   }
 
+  async function sendTest() {
+    setState('busy');
+    try {
+      const res = await fetch('/api/notifications/test', { method: 'POST' });
+      const data = (await res.json()) as { ok?: boolean; error?: string; sent?: number };
+      if (!res.ok || !data.ok) {
+        toast.error(data.error ?? 'No se pudo enviar la prueba');
+      } else {
+        toast.success(`Prueba enviada (${data.sent ?? 0}). Revisa la notificación.`);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error');
+    } finally {
+      setState('subscribed');
+    }
+  }
+
   if (state === 'subscribed') {
     return (
-      <Button variant="outline" onClick={deactivate}>
-        <BellOff className="size-4" aria-hidden />
-        Desactivar notificaciones
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" onClick={deactivate}>
+          <BellOff className="size-4" aria-hidden />
+          Desactivar notificaciones
+        </Button>
+        <Button variant="ghost" onClick={sendTest}>
+          <Bell className="size-4" aria-hidden />
+          Enviar prueba
+        </Button>
+      </div>
     );
   }
 

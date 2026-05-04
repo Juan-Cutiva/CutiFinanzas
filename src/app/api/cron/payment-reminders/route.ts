@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import { type NextRequest, NextResponse } from 'next/server';
 import 'dayjs/locale/es';
-import { and, eq, lte } from 'drizzle-orm';
+import { and, eq, inArray, lte } from 'drizzle-orm';
 import webpush from 'web-push';
 import { db } from '@/db/client';
 import { pushSubscriptions, recurringRules } from '@/db/schema';
@@ -44,10 +44,13 @@ export async function GET(req: NextRequest) {
   }
 
   const userIds = [...new Set(due.map((r) => r.userId))];
+  if (userIds.length === 0) {
+    return NextResponse.json({ ok: true, sent: 0, message: 'Sin pagos próximos' });
+  }
   const subs = await db
     .select()
     .from(pushSubscriptions)
-    .where(eq(pushSubscriptions.userId, userIds[0] ?? ''));
+    .where(inArray(pushSubscriptions.userId, userIds));
 
   let sent = 0;
   let failed = 0;

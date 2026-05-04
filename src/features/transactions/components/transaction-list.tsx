@@ -2,7 +2,7 @@
 
 import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Trash2 } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -54,8 +54,10 @@ export function TransactionList({ items }: { items: TxListItem[] }) {
     },
   });
 
-  const grouped = groupByDay(items);
-  const days = Object.keys(grouped).sort((a, b) => (a < b ? 1 : -1));
+  const { grouped, days } = useMemo(() => {
+    const g = groupByDay(items);
+    return { grouped: g, days: Object.keys(g).sort((a, b) => (a < b ? 1 : -1)) };
+  }, [items]);
 
   return (
     <>

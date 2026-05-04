@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidateAfterSavings } from '@/lib/cache-tags';
 import { authedAction } from '@/lib/safe-action';
 import {
   contributeToGoal,
@@ -20,8 +20,7 @@ export const createSavingsGoalAction = authedAction
   .inputSchema(savingsGoalInputSchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await createSavingsGoal(ctx.userId, parsedInput);
-    revalidatePath('/ahorros');
-    revalidatePath('/dashboard');
+    revalidateAfterSavings(ctx.userId);
     return row;
   });
 
@@ -30,7 +29,7 @@ export const updateSavingsGoalAction = authedAction
   .inputSchema(updateSavingsGoalSchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await updateSavingsGoal(ctx.userId, parsedInput);
-    revalidatePath('/ahorros');
+    revalidateAfterSavings(ctx.userId);
     return row;
   });
 
@@ -39,8 +38,7 @@ export const contributeToGoalAction = authedAction
   .inputSchema(contributeSchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await contributeToGoal(ctx.userId, parsedInput);
-    revalidatePath('/ahorros');
-    revalidatePath('/dashboard');
+    revalidateAfterSavings(ctx.userId);
     return row;
   });
 
@@ -49,6 +47,6 @@ export const deleteSavingsGoalAction = authedAction
   .inputSchema(deleteSavingsGoalSchema)
   .action(async ({ parsedInput, ctx }) => {
     await deleteSavingsGoal(ctx.userId, parsedInput.id);
-    revalidatePath('/ahorros');
+    revalidateAfterSavings(ctx.userId);
     return { ok: true };
   });

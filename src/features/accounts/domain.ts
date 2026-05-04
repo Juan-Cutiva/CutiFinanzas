@@ -89,20 +89,6 @@ export function balanceDeltaFor(
   return 0n;
 }
 
-export const ASSET_TYPES: AccountType[] = ['cash', 'debit', 'savings', 'investment', 'other'];
-export const LIABILITY_TYPES_LIST: AccountType[] = ['credit_card', 'loan'];
-
-export function isAssetType(type: string): boolean {
-  return classifyAccount(type as AccountType) === 'asset';
-}
-
 export function isLiabilityType(type: string): boolean {
   return classifyAccount(type as AccountType) === 'liability';
-}
-
-/** Tipos de transacción que NO cuentan en cash flow / presupuestos / reportes */
-const NON_CASHFLOW_KINDS = new Set(['transfer', 'credit_card_payment']);
-
-export function isCashflowKind(kind: string): boolean {
-  return !NON_CASHFLOW_KINDS.has(kind);
 }

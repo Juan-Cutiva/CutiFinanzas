@@ -50,19 +50,22 @@ export function MonthSwitcher() {
   const search = useSearchParams();
   const [open, setOpen] = useState(false);
 
-  const now = dayjs();
-  const yearParam = Number.parseInt(search.get('y') ?? String(now.year()), 10);
-  const monthParam = Number.parseInt(search.get('m') ?? String(now.month() + 1), 10);
-  const isCurrent = yearParam === now.year() && monthParam === now.month() + 1;
+  const { currentYear, currentMonth } = useMemo(() => {
+    const d = dayjs();
+    return { currentYear: d.year(), currentMonth: d.month() + 1 };
+  }, []);
+  const yearParam = Number.parseInt(search.get('y') ?? String(currentYear), 10);
+  const monthParam = Number.parseInt(search.get('m') ?? String(currentMonth), 10);
+  const isCurrent = yearParam === currentYear && monthParam === currentMonth;
 
-  const years = useMemo(() => {
-    const current = now.year();
-    return Array.from({ length: 6 }, (_, i) => current - 2 + i);
-  }, [now]);
+  const years = useMemo(
+    () => Array.from({ length: 6 }, (_, i) => currentYear - 2 + i),
+    [currentYear],
+  );
 
   function navigate(year: number, month: number) {
     const params = new URLSearchParams(search?.toString() ?? '');
-    if (year === now.year() && month === now.month() + 1) {
+    if (year === currentYear && month === currentMonth) {
       params.delete('y');
       params.delete('m');
     } else {
@@ -153,7 +156,7 @@ export function MonthSwitcher() {
                 variant="outline"
                 className="h-9"
                 onClick={() => {
-                  navigate(now.year(), now.month() + 1);
+                  navigate(currentYear, currentMonth);
                   setOpen(false);
                 }}
               >
@@ -211,7 +214,7 @@ export function MonthSwitcher() {
           size="sm"
           variant="outline"
           className="hidden h-9 md:inline-flex"
-          onClick={() => navigate(now.year(), now.month() + 1)}
+          onClick={() => navigate(currentYear, currentMonth)}
         >
           Hoy
         </Button>

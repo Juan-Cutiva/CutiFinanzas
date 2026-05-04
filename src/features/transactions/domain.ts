@@ -18,25 +18,10 @@ const EXPENSE_KINDS = new Set([
   'savings_contribution',
 ]);
 
-const NON_CASHFLOW_KINDS = new Set(['transfer', 'credit_card_payment']);
-
 export function isIncomeKind(kind: string): boolean {
   return INCOME_KINDS.has(kind);
 }
 
 export function isExpenseKind(kind: string): boolean {
   return EXPENSE_KINDS.has(kind);
-}
-
-export function isFixedKind(kind: string): boolean {
-  return kind === 'income_fixed' || kind === 'expense_fixed';
-}
-
-/** Indica si el kind cuenta como flujo de caja real (excluye transfers y pagos a TC). */
-export function isCashflowKind(kind: string): boolean {
-  return !NON_CASHFLOW_KINDS.has(kind);
-}
-
-export function signFor(kind: string): 1 | -1 {
-  return isIncomeKind(kind) ? 1 : -1;
 }

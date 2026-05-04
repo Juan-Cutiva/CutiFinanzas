@@ -1,7 +1,7 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { revalidateAfterCategory } from '@/lib/cache-tags';
 import { authedAction } from '@/lib/safe-action';
 import {
   archiveCategory,
@@ -16,8 +16,7 @@ export const createCategoryAction = authedAction
   .inputSchema(categoryInputSchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await createCategory(ctx.userId, parsedInput);
-    revalidatePath('/ajustes');
-    revalidatePath('/transacciones');
+    revalidateAfterCategory(ctx.userId);
     return row;
   });
 
@@ -26,7 +25,7 @@ export const updateCategoryAction = authedAction
   .inputSchema(updateCategorySchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await updateCategory(ctx.userId, parsedInput);
-    revalidatePath('/ajustes');
+    revalidateAfterCategory(ctx.userId);
     return row;
   });
 
@@ -35,7 +34,7 @@ export const archiveCategoryAction = authedAction
   .inputSchema(deleteCategorySchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await archiveCategory(ctx.userId, parsedInput.id);
-    revalidatePath('/ajustes');
+    revalidateAfterCategory(ctx.userId);
     return row;
   });
 
@@ -44,7 +43,6 @@ export const seedDefaultCategoriesAction = authedAction
   .inputSchema(z.object({}))
   .action(async ({ ctx }) => {
     const rows = await seedDefaultCategoriesIfEmpty(ctx.userId);
-    revalidatePath('/ajustes');
-    revalidatePath('/transacciones');
+    revalidateAfterCategory(ctx.userId);
     return rows;
   });

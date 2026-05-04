@@ -61,6 +61,9 @@ export const transactions = pgTable(
     index('idx_tx_recurring').on(t.recurringRuleId),
     index('idx_tx_debt').on(t.debtId),
     index('idx_tx_savings_goal').on(t.savingsGoalId),
+    index('idx_tx_user_kind_date').on(t.userId, t.kind, t.occurredAt),
+    index('idx_tx_user_account_kind').on(t.userId, t.accountId, t.kind),
+    index('idx_tx_user_transfer_account').on(t.userId, t.transferAccountId),
   ],
 );
 

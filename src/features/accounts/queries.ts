@@ -1,25 +1,28 @@
 import 'server-only';
 import { and, asc, eq, isNull, or, sum } from 'drizzle-orm';
+import { cache } from 'react';
 import { db } from '@/db/client';
 import { accounts, transactions } from '@/db/schema';
 import type { UserId } from '@/types/ids';
 import { type AccountType, balanceDeltaFor, classifyAccount } from './domain';
 
-export async function listAccountsByUser(userId: UserId) {
+export const listAccountsByUser = cache(async function listAccountsByUser(userId: UserId) {
   return db
     .select()
     .from(accounts)
     .where(and(eq(accounts.userId, userId), isNull(accounts.archivedAt)))
     .orderBy(asc(accounts.name));
-}
+});
 
-export async function getAccountById(userId: UserId, id: string) {
+export const getAccountById = cache(async function getAccountById(userId: UserId, id: string) {
   return db.query.accounts.findFirst({
     where: and(eq(accounts.userId, userId), eq(accounts.id, id)),
   });
-}
+});
 
-export async function listAccountsWithBalance(userId: UserId) {
+export const listAccountsWithBalance = cache(async function listAccountsWithBalance(
+  userId: UserId,
+) {
   const list = await listAccountsByUser(userId);
   if (list.length === 0) return [];
 
@@ -68,7 +71,7 @@ export async function listAccountsWithBalance(userId: UserId) {
       classification: classifyAccount(acc.type as AccountType),
     };
   });
-}
+});
 
 export async function getAccountTransactions(userId: UserId, accountId: string) {
   return db.query.transactions.findMany({
@@ -82,7 +85,10 @@ export async function getAccountTransactions(userId: UserId, accountId: string) 
   });
 }
 
-export async function computeAccountBalance(userId: UserId, accountId: string): Promise<bigint> {
+export const computeAccountBalance = cache(async function computeAccountBalance(
+  userId: UserId,
+  accountId: string,
+): Promise<bigint> {
   const account = await getAccountById(userId, accountId);
   if (!account) return 0n;
 
@@ -118,4 +124,4 @@ export async function computeAccountBalance(userId: UserId, accountId: string): 
     balance += balanceDeltaFor(account.type as AccountType, s.kind, false, BigInt(s.total ?? 0));
   }
   return balance;
-}
+});

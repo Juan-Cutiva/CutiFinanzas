@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidateAfterAccount } from '@/lib/cache-tags';
 import { authedAction } from '@/lib/safe-action';
 import { archiveAccount, createAccount, updateAccount } from './mutations';
 import { accountInputSchema, archiveAccountSchema, updateAccountSchema } from './schema';
@@ -10,8 +10,7 @@ export const createAccountAction = authedAction
   .inputSchema(accountInputSchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await createAccount(ctx.userId, parsedInput);
-    revalidatePath('/cuentas');
-    revalidatePath('/dashboard');
+    revalidateAfterAccount(ctx.userId);
     return row;
   });
 
@@ -20,7 +19,7 @@ export const updateAccountAction = authedAction
   .inputSchema(updateAccountSchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await updateAccount(ctx.userId, parsedInput);
-    revalidatePath('/cuentas');
+    revalidateAfterAccount(ctx.userId);
     return row;
   });
 
@@ -29,7 +28,6 @@ export const archiveAccountAction = authedAction
   .inputSchema(archiveAccountSchema)
   .action(async ({ parsedInput, ctx }) => {
     await archiveAccount(ctx.userId, parsedInput.id);
-    revalidatePath('/cuentas');
-    revalidatePath('/dashboard');
+    revalidateAfterAccount(ctx.userId);
     return { ok: true };
   });

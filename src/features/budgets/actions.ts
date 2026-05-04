@@ -1,6 +1,6 @@
 'use server';
 
-import { revalidatePath } from 'next/cache';
+import { revalidateAfterBudget } from '@/lib/cache-tags';
 import { authedAction } from '@/lib/safe-action';
 import { deleteBudget, updateBudget, upsertBudget } from './mutations';
 import { budgetInputSchema, deleteBudgetSchema, updateBudgetSchema } from './schema';
@@ -10,8 +10,7 @@ export const upsertBudgetAction = authedAction
   .inputSchema(budgetInputSchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await upsertBudget(ctx.userId, parsedInput);
-    revalidatePath('/presupuestos');
-    revalidatePath('/dashboard');
+    revalidateAfterBudget(ctx.userId);
     return row;
   });
 
@@ -20,7 +19,7 @@ export const updateBudgetAction = authedAction
   .inputSchema(updateBudgetSchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await updateBudget(ctx.userId, parsedInput);
-    revalidatePath('/presupuestos');
+    revalidateAfterBudget(ctx.userId);
     return row;
   });
 
@@ -29,6 +28,6 @@ export const deleteBudgetAction = authedAction
   .inputSchema(deleteBudgetSchema)
   .action(async ({ parsedInput, ctx }) => {
     await deleteBudget(ctx.userId, parsedInput.id);
-    revalidatePath('/presupuestos');
+    revalidateAfterBudget(ctx.userId);
     return { ok: true };
   });

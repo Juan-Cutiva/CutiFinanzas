@@ -13,13 +13,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   experimental: {
-    optimizePackageImports: [
-      'lucide-react',
-      '@tanstack/react-query',
-      'recharts',
-      'date-fns',
-      'dayjs',
-    ],
+    optimizePackageImports: ['lucide-react', 'recharts', 'date-fns', 'dayjs'],
   },
   images: {
     formats: ['image/avif', 'image/webp'],
