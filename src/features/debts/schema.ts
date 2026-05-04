@@ -22,3 +22,10 @@ export const updateDebtSchema = debtInputSchema.partial().extend({ id: z.string(
 export type UpdateDebtInput = z.infer<typeof updateDebtSchema>;
 
 export const deleteDebtSchema = z.object({ id: z.string().min(1) });
+
+export const recordDebtUsageSchema = z.object({
+  id: z.string().min(1),
+  amount: z.coerce.number().positive('El monto debe ser positivo'),
+  description: z.string().trim().min(1, 'Describe el motivo').max(200),
+});
+export type RecordDebtUsageInput = z.infer<typeof recordDebtUsageSchema>;

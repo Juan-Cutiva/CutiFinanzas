@@ -9,6 +9,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Progress } from '@/components/ui/progress';
 import { getOrCreateUser } from '@/db/queries/users';
 import { listCategoriesByUser } from '@/features/categories/queries';
+import { RecordDebtUsageButton } from '@/features/debts/components/record-debt-usage-button';
 import {
   annualToMonthlyRate,
   calculateRemainingMonths,
@@ -49,12 +50,13 @@ export default async function DebtDetailPage({ params }: Props) {
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
-      <div>
+      <div className="flex items-center justify-between gap-2">
         <Button asChild variant="ghost" size="sm" className="-ml-2 h-8">
           <Link href="/deudas">
             <ArrowLeft className="mr-1 size-4" /> Volver a deudas
           </Link>
         </Button>
+        <RecordDebtUsageButton debtId={debt.id} debtName={debt.name} />
       </div>
 
       <Card>

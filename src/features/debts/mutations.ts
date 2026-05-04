@@ -6,7 +6,7 @@ import { NotFoundError } from '@/lib/errors';
 import type { CurrencyCode } from '@/lib/money';
 import type { UserId } from '@/types/ids';
 import { amountMajorToMinor } from '../transactions/domain';
-import type { DebtInput, UpdateDebtInput } from './schema';
+import type { DebtInput, RecordDebtUsageInput, UpdateDebtInput } from './schema';
 
 export async function createDebt(userId: UserId, input: DebtInput) {
   const currency = input.currency as CurrencyCode;
@@ -66,6 +66,38 @@ export async function updateDebt(userId: UserId, input: UpdateDebtInput) {
     .update(debts)
     .set(patch)
     .where(and(eq(debts.userId, userId), eq(debts.id, id)))
+    .returning();
+  if (!row) throw new NotFoundError('Deuda');
+  return row;
+}
+
+/**
+ * Aumenta el saldo de una deuda y su monto inicial, sin afectar cuentas
+ * ni aparecer en /gastos. Pensado para registrar un "uso" adicional
+ * (compra extra a cuotas, mora capitalizada, refinanciación, etc.).
+ * Anota el motivo y la fecha en el campo notes para audit.
+ */
+export async function recordDebtUsage(userId: UserId, input: RecordDebtUsageInput) {
+  const existing = await db.query.debts.findFirst({
+    where: and(eq(debts.userId, userId), eq(debts.id, input.id)),
+  });
+  if (!existing) throw new NotFoundError('Deuda');
+
+  const currency = existing.currency as CurrencyCode;
+  const usageMinor = amountMajorToMinor(input.amount, currency);
+  const today = new Date().toISOString().slice(0, 10);
+  const auditLine = `[${today}] +${input.amount} — ${input.description}`;
+  const newNotes = existing.notes ? `${existing.notes}\n${auditLine}` : auditLine;
+
+  const [row] = await db
+    .update(debts)
+    .set({
+      initialAmountMinor: sql`${debts.initialAmountMinor} + ${usageMinor.toString()}::bigint`,
+      currentBalanceMinor: sql`${debts.currentBalanceMinor} + ${usageMinor.toString()}::bigint`,
+      notes: newNotes,
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(debts.userId, userId), eq(debts.id, input.id)))
     .returning();
   if (!row) throw new NotFoundError('Deuda');
   return row;

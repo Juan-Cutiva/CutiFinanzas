@@ -2,8 +2,13 @@
 
 import { revalidateAfterDebt } from '@/lib/cache-tags';
 import { authedAction } from '@/lib/safe-action';
-import { createDebt, deleteDebt, updateDebt } from './mutations';
-import { debtInputSchema, deleteDebtSchema, updateDebtSchema } from './schema';
+import { createDebt, deleteDebt, recordDebtUsage, updateDebt } from './mutations';
+import {
+  debtInputSchema,
+  deleteDebtSchema,
+  recordDebtUsageSchema,
+  updateDebtSchema,
+} from './schema';
 
 export const createDebtAction = authedAction
   .metadata({ actionName: 'createDebt' })
@@ -19,6 +24,15 @@ export const updateDebtAction = authedAction
   .inputSchema(updateDebtSchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await updateDebt(ctx.userId, parsedInput);
+    revalidateAfterDebt(ctx.userId);
+    return row;
+  });
+
+export const recordDebtUsageAction = authedAction
+  .metadata({ actionName: 'recordDebtUsage' })
+  .inputSchema(recordDebtUsageSchema)
+  .action(async ({ parsedInput, ctx }) => {
+    const row = await recordDebtUsage(ctx.userId, parsedInput);
     revalidateAfterDebt(ctx.userId);
     return row;
   });
