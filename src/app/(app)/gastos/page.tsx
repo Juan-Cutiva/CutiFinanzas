@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getOrCreateUser } from '@/db/queries/users';
+import { listCategoriesByUser } from '@/features/categories/queries';
 import { TransactionList } from '@/features/transactions/components/transaction-list';
 import { listExpenseByMonth, totalsByMonth } from '@/features/transactions/queries';
 import { dayjs, formatAmount } from '@/lib/format';
@@ -25,9 +26,10 @@ export default async function GastosPage({ searchParams }: PageProps) {
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
   const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
 
-  const [items, totals] = await Promise.all([
+  const [items, totals, categories] = await Promise.all([
     listExpenseByMonth(userId, year, month),
     totalsByMonth(userId, year, month),
+    listCategoriesByUser(userId),
   ]);
 
   const totalMinor = totals.expenseFixedMinor + totals.expenseVariableMinor;
@@ -57,7 +59,7 @@ export default async function GastosPage({ searchParams }: PageProps) {
           description="Toca el botón ＋ para registrar un gasto (fijo o variable)."
         />
       ) : (
-        <TransactionList items={items} />
+        <TransactionList items={items} categories={categories} />
       )}
     </div>
   );

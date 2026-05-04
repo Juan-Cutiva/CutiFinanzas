@@ -173,7 +173,7 @@ export function TransactionForm({
     if (isExpense) {
       const current = form.getValues('categoryId');
       if (!current && categories[0]) form.setValue('categoryId', categories[0].id);
-    } else {
+    } else if (!isCreditCardPayment) {
       form.setValue('categoryId', null);
     }
     if (!isTransfer && !isCreditCardPayment) form.setValue('transferAccountId', null);
@@ -452,20 +452,26 @@ export function TransactionForm({
           </p>
         ) : null}
 
-        {isExpense ? (
+        {isExpense || isCreditCardPayment ? (
           <FormField
             control={form.control}
             name="categoryId"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Categoría</FormLabel>
-                <Select value={field.value ?? ''} onValueChange={field.onChange}>
+                <FormLabel>Categoría {isCreditCardPayment ? '(opcional)' : ''}</FormLabel>
+                <Select
+                  value={field.value ?? '__none__'}
+                  onValueChange={(v) => field.onChange(v === '__none__' ? null : v)}
+                >
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecciona categoría" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
+                    {isCreditCardPayment ? (
+                      <SelectItem value="__none__">Sin categoría</SelectItem>
+                    ) : null}
                     {categories.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.name}

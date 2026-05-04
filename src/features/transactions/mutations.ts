@@ -10,7 +10,13 @@ import { formatAmount } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import type { UserId } from '@/types/ids';
 import { amountMajorToMinor, getQuincenaFromIsoDate } from './domain';
-import type { TransactionInput, UpdateTransactionInput } from './schema';
+import type {
+  TransactionInput,
+  UpdateRecurringTransactionInput,
+  UpdateTransactionInput,
+} from './schema';
+
+type RuleRow = typeof recurringRules.$inferSelect;
 
 export async function createTransaction(userId: UserId, input: TransactionInput) {
   const account = await db.query.accounts.findFirst({
@@ -192,13 +198,196 @@ export async function createTransaction(userId: UserId, input: TransactionInput)
 }
 
 export async function updateTransaction(userId: UserId, input: UpdateTransactionInput) {
-  const { id, ...patch } = input;
+  const { id, amount, ...rest } = input;
+  const existing = await db.query.transactions.findFirst({
+    where: and(eq(transactions.userId, userId), eq(transactions.id, id)),
+  });
+  if (!existing) throw new NotFoundError('Transacción');
+
+  const patch: Record<string, unknown> = { ...rest, updatedAt: sql`now()` };
+  if (amount !== undefined) {
+    patch.amountMinor = amountMajorToMinor(amount, existing.currency as CurrencyCode);
+  }
   const [row] = await db
     .update(transactions)
-    .set({ ...patch, updatedAt: sql`now()` })
+    .set(patch)
     .where(and(eq(transactions.userId, userId), eq(transactions.id, id)))
     .returning();
   if (!row) throw new NotFoundError('Transacción');
+  return row;
+}
+
+interface OccurrenceValues {
+  amountMinor: bigint;
+  description?: string;
+  categoryId?: string | null;
+  notes?: string | null;
+}
+
+async function upsertOccurrence(
+  userId: UserId,
+  rule: RuleRow,
+  occurredAt: string,
+  values: OccurrenceValues,
+) {
+  const existing = await db.query.transactions.findFirst({
+    where: and(
+      eq(transactions.userId, userId),
+      eq(transactions.recurringRuleId, rule.id),
+      eq(transactions.occurredAt, occurredAt),
+    ),
+  });
+
+  if (existing) {
+    const patch: Record<string, unknown> = {
+      amountMinor: values.amountMinor,
+      updatedAt: sql`now()`,
+    };
+    if (values.description !== undefined) {
+      patch.description = values.description.trim() || null;
+    }
+    if (values.categoryId !== undefined) patch.categoryId = values.categoryId;
+    if (values.notes !== undefined) patch.notes = values.notes;
+    const [row] = await db
+      .update(transactions)
+      .set(patch)
+      .where(and(eq(transactions.userId, userId), eq(transactions.id, existing.id)))
+      .returning();
+    return row;
+  }
+
+  const [row] = await db
+    .insert(transactions)
+    .values({
+      userId,
+      accountId: rule.accountId,
+      categoryId: values.categoryId ?? rule.categoryId,
+      kind: rule.kind,
+      amountMinor: values.amountMinor,
+      currency: rule.currency,
+      occurredAt,
+      description: (values.description?.trim() || null) ?? rule.name,
+      notes: values.notes ?? rule.notes,
+      isPaid: true,
+      quincena: getQuincenaFromIsoDate(occurredAt),
+      isRecurring: true,
+      recurringRuleId: rule.id,
+    })
+    .returning();
+  return row;
+}
+
+async function materializePastOccurrences(userId: UserId, rule: RuleRow, beforeIso: string) {
+  if (rule.frequency !== 'monthly') return;
+
+  const realRows = await db.query.transactions.findMany({
+    where: and(eq(transactions.userId, userId), eq(transactions.recurringRuleId, rule.id)),
+    columns: { occurredAt: true },
+  });
+  const realDates = new Set(realRows.map((r) => r.occurredAt));
+
+  const dayOfMonth = rule.dayOfMonth ?? Number.parseInt(rule.startDate.slice(8, 10), 10);
+  const before = dayjs(beforeIso);
+  let cursor = dayjs(rule.startDate).startOf('month');
+  let safety = 366;
+
+  while (cursor.isBefore(before, 'month') || cursor.isSame(before, 'month')) {
+    if (safety-- <= 0) break;
+    if (cursor.isSame(before, 'month')) break;
+
+    const lastDay = cursor.endOf('month').date();
+    const day = Math.min(dayOfMonth, lastDay);
+    const dateStr = cursor.date(day).format('YYYY-MM-DD');
+
+    if (
+      dateStr >= rule.startDate &&
+      dateStr < beforeIso &&
+      (!rule.endDate || dateStr <= rule.endDate) &&
+      !realDates.has(dateStr)
+    ) {
+      await db.insert(transactions).values({
+        userId,
+        accountId: rule.accountId,
+        categoryId: rule.categoryId,
+        kind: rule.kind,
+        amountMinor: rule.amountMinor,
+        currency: rule.currency,
+        occurredAt: dateStr,
+        description: rule.name,
+        notes: rule.notes,
+        isPaid: true,
+        quincena: getQuincenaFromIsoDate(dateStr),
+        isRecurring: true,
+        recurringRuleId: rule.id,
+      });
+    }
+
+    cursor = cursor.add(1, 'month');
+  }
+}
+
+export async function updateRecurringTransaction(
+  userId: UserId,
+  input: UpdateRecurringTransactionInput,
+) {
+  let ruleId: string;
+  let occurredAt: string;
+
+  if (input.id.startsWith('virtual:')) {
+    const parts = input.id.split(':');
+    if (parts.length < 3) throw new ValidationError('Identificador inválido');
+    ruleId = parts[1] as string;
+    occurredAt = parts.slice(2).join(':');
+  } else {
+    const tx = await db.query.transactions.findFirst({
+      where: and(eq(transactions.userId, userId), eq(transactions.id, input.id)),
+    });
+    if (!tx) throw new NotFoundError('Transacción');
+    if (!tx.recurringRuleId) {
+      throw new ValidationError('Esta transacción no es recurrente');
+    }
+    ruleId = tx.recurringRuleId;
+    occurredAt = tx.occurredAt;
+  }
+
+  const rule = await db.query.recurringRules.findFirst({
+    where: and(eq(recurringRules.userId, userId), eq(recurringRules.id, ruleId)),
+  });
+  if (!rule) throw new NotFoundError('Regla recurrente');
+
+  const newAmountMinor = amountMajorToMinor(input.amount, rule.currency as CurrencyCode);
+  const values: OccurrenceValues = {
+    amountMinor: newAmountMinor,
+    description: input.description,
+    categoryId: input.categoryId,
+    notes: input.notes,
+  };
+
+  if (input.mode === 'this_month') {
+    return upsertOccurrence(userId, rule, occurredAt, values);
+  }
+
+  await materializePastOccurrences(userId, rule, occurredAt);
+  const row = await upsertOccurrence(userId, rule, occurredAt, values);
+
+  const dayOfMonth = rule.dayOfMonth ?? Number.parseInt(rule.startDate.slice(8, 10), 10);
+  const nextMonth = dayjs(occurredAt).add(1, 'month');
+  const lastDayNext = nextMonth.endOf('month').date();
+  const safeDayNext = Math.min(dayOfMonth, lastDayNext);
+  const nextOccurrence = nextMonth.date(safeDayNext).format('YYYY-MM-DD');
+
+  await db
+    .update(recurringRules)
+    .set({
+      amountMinor: newAmountMinor,
+      name: input.description?.trim() || rule.name,
+      categoryId: input.categoryId !== undefined ? input.categoryId : rule.categoryId,
+      notes: input.notes !== undefined ? input.notes : rule.notes,
+      nextOccurrenceDate: nextOccurrence,
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(recurringRules.userId, userId), eq(recurringRules.id, rule.id)));
+
   return row;
 }
 

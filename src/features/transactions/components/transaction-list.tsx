@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Trash2 } from 'lucide-react';
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Pencil, Trash2 } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -19,6 +19,11 @@ import type { CurrencyCode } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { deleteTransactionAction } from '../actions';
 import { isExpenseKind, isIncomeKind } from '../domain';
+import {
+  type CategoryOption,
+  type EditableTx,
+  EditTransactionDialog,
+} from './edit-transaction-dialog';
 
 export interface TxListItem {
   id: string;
@@ -27,10 +32,16 @@ export interface TxListItem {
   currency: string;
   occurredAt: string;
   description: string | null;
+  notes: string | null;
+  categoryId: string | null;
+  isRecurring: boolean;
+  recurringRuleId: string | null;
   account: { name: string } | null;
   transferAccount: { name: string } | null;
   category: { name: string; color: string; icon: string } | null;
 }
+
+const NON_EDITABLE_KINDS = new Set(['transfer', 'debt_payment', 'savings_contribution']);
 
 function groupByDay(items: TxListItem[]): Record<string, TxListItem[]> {
   const groups: Record<string, TxListItem[]> = {};
@@ -42,8 +53,15 @@ function groupByDay(items: TxListItem[]): Record<string, TxListItem[]> {
   return groups;
 }
 
-export function TransactionList({ items }: { items: TxListItem[] }) {
+interface Props {
+  items: TxListItem[];
+  categories?: CategoryOption[];
+}
+
+export function TransactionList({ items, categories = [] }: Props) {
   const [pendingDelete, setPendingDelete] = useState<TxListItem | null>(null);
+  const [editing, setEditing] = useState<EditableTx | null>(null);
+
   const { execute, isPending } = useAction(deleteTransactionAction, {
     onSuccess: () => {
       toast.success('Movimiento eliminado');
@@ -58,6 +76,20 @@ export function TransactionList({ items }: { items: TxListItem[] }) {
     const g = groupByDay(items);
     return { grouped: g, days: Object.keys(g).sort((a, b) => (a < b ? 1 : -1)) };
   }, [items]);
+
+  function handleEdit(tx: TxListItem) {
+    setEditing({
+      id: tx.id,
+      kind: tx.kind,
+      amountMinor: tx.amountMinor,
+      currency: tx.currency,
+      occurredAt: tx.occurredAt,
+      description: tx.description,
+      notes: tx.notes,
+      categoryId: tx.categoryId,
+      isRecurring: tx.isRecurring || tx.id.startsWith('virtual:'),
+    });
+  }
 
   return (
     <>
@@ -92,7 +124,12 @@ export function TransactionList({ items }: { items: TxListItem[] }) {
               <Card>
                 <ul className="divide-y divide-border">
                   {dayItems.map((tx) => (
-                    <TxRow key={tx.id} tx={tx} onDelete={() => setPendingDelete(tx)} />
+                    <TxRow
+                      key={tx.id}
+                      tx={tx}
+                      onEdit={() => handleEdit(tx)}
+                      onDelete={() => setPendingDelete(tx)}
+                    />
                   ))}
                 </ul>
               </Card>
@@ -123,11 +160,23 @@ export function TransactionList({ items }: { items: TxListItem[] }) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <EditTransactionDialog
+        tx={editing}
+        categories={categories}
+        onClose={() => setEditing(null)}
+      />
     </>
   );
 }
 
-function TxRow({ tx, onDelete }: { tx: TxListItem; onDelete: () => void }) {
+interface RowProps {
+  tx: TxListItem;
+  onEdit: () => void;
+  onDelete: () => void;
+}
+
+function TxRow({ tx, onEdit, onDelete }: RowProps) {
   const expense = isExpenseKind(tx.kind);
   const income = isIncomeKind(tx.kind);
   const transfer = tx.kind === 'transfer' || tx.kind === 'credit_card_payment';
@@ -135,6 +184,7 @@ function TxRow({ tx, onDelete }: { tx: TxListItem; onDelete: () => void }) {
   const amountMajor = Number(tx.amountMinor) / 100;
   const displayAmount = expense ? -amountMajor : amountMajor;
   const Icon = transfer ? ArrowLeftRight : income ? ArrowUpRight : ArrowDownLeft;
+  const editable = !NON_EDITABLE_KINDS.has(tx.kind);
 
   return (
     <li
@@ -172,7 +222,7 @@ function TxRow({ tx, onDelete }: { tx: TxListItem; onDelete: () => void }) {
           {tx.category && !transfer ? ` · ${tx.category.name}` : ''}
         </p>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
         <span
           className={`font-mono tabular-nums text-sm font-semibold ${
             income ? 'text-amount-positive' : expense ? 'text-amount-negative' : 'text-foreground'
@@ -182,6 +232,17 @@ function TxRow({ tx, onDelete }: { tx: TxListItem; onDelete: () => void }) {
             signDisplay: income || expense ? 'always' : 'auto',
           })}
         </span>
+        {editable ? (
+          <Button
+            size="icon"
+            variant="ghost"
+            aria-label="Editar movimiento"
+            className="size-9 transition-opacity md:size-8 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+            onClick={onEdit}
+          >
+            <Pencil className="size-4 text-muted-foreground" />
+          </Button>
+        ) : null}
         {isVirtual ? null : (
           <Button
             size="icon"

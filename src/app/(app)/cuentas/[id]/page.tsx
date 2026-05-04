@@ -10,6 +10,7 @@ import { getOrCreateUser } from '@/db/queries/users';
 import { type AccountType, balanceDeltaFor, classifyAccount } from '@/features/accounts/domain';
 import { getAccountById, getAccountTransactions } from '@/features/accounts/queries';
 import { ACCOUNT_TYPE_LABELS } from '@/features/accounts/schema';
+import { listCategoriesByUser } from '@/features/categories/queries';
 import { TransactionList } from '@/features/transactions/components/transaction-list';
 import { formatAmount } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
@@ -27,7 +28,10 @@ export default async function AccountDetailPage({ params }: Props) {
   const account = await getAccountById(user.id as never, id);
   if (!account) notFound();
 
-  const txs = await getAccountTransactions(user.id as never, account.id);
+  const [txs, categories] = await Promise.all([
+    getAccountTransactions(user.id as never, account.id),
+    listCategoriesByUser(user.id as never),
+  ]);
 
   let balanceMinor = BigInt(account.initialBalanceMinor);
   for (const t of txs) {
@@ -124,7 +128,7 @@ export default async function AccountDetailPage({ params }: Props) {
             description="Esta cuenta aún no tiene transacciones registradas."
           />
         ) : (
-          <TransactionList items={txs as never} />
+          <TransactionList items={txs as never} categories={categories} />
         )}
       </section>
     </div>

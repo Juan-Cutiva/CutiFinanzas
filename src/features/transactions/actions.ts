@@ -2,8 +2,18 @@
 
 import { revalidateAfterTransaction } from '@/lib/cache-tags';
 import { authedAction } from '@/lib/safe-action';
-import { createTransaction, deleteTransaction, updateTransaction } from './mutations';
-import { deleteTransactionSchema, transactionInputSchema, updateTransactionSchema } from './schema';
+import {
+  createTransaction,
+  deleteTransaction,
+  updateRecurringTransaction,
+  updateTransaction,
+} from './mutations';
+import {
+  deleteTransactionSchema,
+  transactionInputSchema,
+  updateRecurringTransactionSchema,
+  updateTransactionSchema,
+} from './schema';
 
 export const createTransactionAction = authedAction
   .metadata({ actionName: 'createTransaction' })
@@ -19,6 +29,15 @@ export const updateTransactionAction = authedAction
   .inputSchema(updateTransactionSchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await updateTransaction(ctx.userId, parsedInput);
+    revalidateAfterTransaction(ctx.userId);
+    return row;
+  });
+
+export const updateRecurringTransactionAction = authedAction
+  .metadata({ actionName: 'updateRecurringTransaction' })
+  .inputSchema(updateRecurringTransactionSchema)
+  .action(async ({ parsedInput, ctx }) => {
+    const row = await updateRecurringTransaction(ctx.userId, parsedInput);
     revalidateAfterTransaction(ctx.userId);
     return row;
   });

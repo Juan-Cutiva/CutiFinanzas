@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Progress } from '@/components/ui/progress';
 import { getOrCreateUser } from '@/db/queries/users';
+import { listCategoriesByUser } from '@/features/categories/queries';
 import {
   annualToMonthlyRate,
   calculateRemainingMonths,
@@ -31,7 +32,10 @@ export default async function DebtDetailPage({ params }: Props) {
   const debt = await getDebtById(user.id as never, id);
   if (!debt) notFound();
 
-  const payments = await getDebtPayments(user.id as never, debt.id);
+  const [payments, categories] = await Promise.all([
+    getDebtPayments(user.id as never, debt.id),
+    listCategoriesByUser(user.id as never),
+  ]);
 
   const initial = Number(debt.initialAmountMinor) / 100;
   const balance = Number(debt.currentBalanceMinor) / 100;
@@ -130,7 +134,7 @@ export default async function DebtDetailPage({ params }: Props) {
             description="Cuando hagas un pago a esta deuda aparecerá aquí."
           />
         ) : (
-          <TransactionList items={payments as never} />
+          <TransactionList items={payments as never} categories={categories} />
         )}
       </section>
     </div>
