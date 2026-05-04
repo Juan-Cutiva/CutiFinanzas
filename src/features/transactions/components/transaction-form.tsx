@@ -20,6 +20,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { MoneyInput } from '@/components/ui/money-input';
 import {
   Select,
@@ -32,7 +33,30 @@ import { Textarea } from '@/components/ui/textarea';
 import { dayjs, formatAmount } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import { createTransactionAction } from '../actions';
-import { type TransactionInput, TX_KIND_LABELS, transactionInputSchema } from '../schema';
+import {
+  KINDS_WITH_FREQUENCY,
+  PRIMARY_KIND_LABELS,
+  type PrimaryKind,
+  type TransactionInput,
+  TX_PRIMARY_KINDS,
+  transactionInputSchema,
+} from '../schema';
+
+function primaryFromKind(kind: TransactionInput['kind']): PrimaryKind {
+  if (kind === 'income_fixed' || kind === 'income_variable') return 'income';
+  if (kind === 'expense_fixed' || kind === 'expense_variable') return 'expense';
+  return kind as PrimaryKind;
+}
+
+function isFixedFromKind(kind: TransactionInput['kind']): boolean {
+  return kind === 'income_fixed' || kind === 'expense_fixed';
+}
+
+function buildKind(primary: PrimaryKind, isRecurring: boolean): TransactionInput['kind'] {
+  if (primary === 'income') return isRecurring ? 'income_fixed' : 'income_variable';
+  if (primary === 'expense') return isRecurring ? 'expense_fixed' : 'expense_variable';
+  return primary as TransactionInput['kind'];
+}
 
 interface AccountOption {
   id: string;
@@ -107,8 +131,29 @@ export function TransactionForm({
       description: '',
       notes: '',
       isPaid: true,
+      isRecurring: isFixedFromKind(defaultKind),
     },
   });
+
+  const [primary, setPrimary] = React.useState<PrimaryKind>(() => primaryFromKind(defaultKind));
+  const [isRecurringUI, setIsRecurringUI] = React.useState<boolean>(() =>
+    isFixedFromKind(defaultKind),
+  );
+
+  function applyPrimary(next: PrimaryKind) {
+    setPrimary(next);
+    const supportsFreq = KINDS_WITH_FREQUENCY.has(next);
+    const recurring = supportsFreq ? isRecurringUI : false;
+    if (!supportsFreq && isRecurringUI) setIsRecurringUI(false);
+    form.setValue('kind', buildKind(next, recurring));
+    form.setValue('isRecurring', recurring);
+  }
+
+  function applyFrequency(recurring: boolean) {
+    setIsRecurringUI(recurring);
+    form.setValue('kind', buildKind(primary, recurring));
+    form.setValue('isRecurring', recurring);
+  }
 
   const watchedKind = form.watch('kind');
   const watchedAccountId = form.watch('accountId');
@@ -119,7 +164,8 @@ export function TransactionForm({
   const selectedTransferAccount = accounts.find((a) => a.id === watchedTransferAccountId);
   const selectedDebt = debts.find((d) => d.id === watchedDebtId);
 
-  const isFixed = watchedKind === 'income_fixed' || watchedKind === 'expense_fixed';
+  const isFixed =
+    watchedKind === 'income_fixed' || watchedKind === 'expense_fixed' || isRecurringUI;
   const isTransfer = watchedKind === 'transfer';
   const isCreditCardPayment = watchedKind === 'credit_card_payment';
   const isExpense = watchedKind === 'expense_fixed' || watchedKind === 'expense_variable';
@@ -220,7 +266,10 @@ export function TransactionForm({
         description: '',
         notes: '',
         isPaid: true,
+        isRecurring: isFixedFromKind(defaultKind),
       });
+      setPrimary(primaryFromKind(defaultKind));
+      setIsRecurringUI(isFixedFromKind(defaultKind));
       onSuccess?.();
     },
     onError: ({ error }) => {
@@ -241,9 +290,11 @@ export function TransactionForm({
     );
   }
 
-  const visibleKinds = (Object.keys(TX_KIND_LABELS) as Array<keyof typeof TX_KIND_LABELS>).filter(
+  const visiblePrimary = TX_PRIMARY_KINDS.filter(
     (k) => k !== 'credit_card_payment' || hasCreditCard,
   );
+
+  const supportsFrequency = KINDS_WITH_FREQUENCY.has(primary);
 
   function setOccurredAtFromDayOfMonth(day: number) {
     form.setValue('occurredAt', nextDateForDayOfMonth(day));
@@ -252,30 +303,44 @@ export function TransactionForm({
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit((data) => execute(data))} className="flex flex-col gap-4">
-        <FormField
-          control={form.control}
-          name="kind"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Tipo</FormLabel>
-              <Select value={field.value} onValueChange={field.onChange}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {visibleKinds.map((k) => (
-                    <SelectItem key={k} value={k}>
-                      {TX_KIND_LABELS[k]}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="tx-primary">Tipo</Label>
+          <Select value={primary} onValueChange={(v) => applyPrimary(v as PrimaryKind)}>
+            <SelectTrigger id="tx-primary">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {visiblePrimary.map((k) => (
+                <SelectItem key={k} value={k}>
+                  {PRIMARY_KIND_LABELS[k]}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {supportsFrequency ? (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="tx-frequency">Frecuencia</Label>
+            <Select
+              value={isRecurringUI ? 'fixed' : 'variable'}
+              onValueChange={(v) => applyFrequency(v === 'fixed')}
+            >
+              <SelectTrigger id="tx-frequency">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="variable">Variable (este movimiento puntual)</SelectItem>
+                <SelectItem value="fixed">Fijo (se repite cada mes)</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              {isRecurringUI
+                ? 'Se creará una regla y aparecerá automáticamente en los meses siguientes.'
+                : 'Solo aplica a la fecha que selecciones.'}
+            </p>
+          </div>
+        ) : null}
 
         <FormField
           control={form.control}

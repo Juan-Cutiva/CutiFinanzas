@@ -11,6 +11,7 @@ import type { CurrencyCode } from '@/lib/money';
 import type { UserId } from '@/types/ids';
 import { amountMajorToMinor, getQuincenaFromIsoDate } from './domain';
 import type {
+  TogglePaidInput,
   TransactionInput,
   UpdateRecurringTransactionInput,
   UpdateTransactionInput,
@@ -119,23 +120,41 @@ export async function createTransaction(userId: UserId, input: TransactionInput)
 
   let recurringRuleId: string | null = null;
 
-  if (input.kind === 'income_fixed' || input.kind === 'expense_fixed') {
+  const shouldCreateRule =
+    input.isRecurring || input.kind === 'income_fixed' || input.kind === 'expense_fixed';
+
+  if (shouldCreateRule) {
     const dayOfMonth = Number.parseInt(input.occurredAt.slice(8, 10), 10);
     const nextMonth = dayjs(input.occurredAt).add(1, 'month');
     const lastDayNext = nextMonth.endOf('month').date();
     const safeDayNext = Math.min(dayOfMonth, lastDayNext);
     const nextOccurrence = nextMonth.date(safeDayNext).format('YYYY-MM-DD');
 
+    const ruleName =
+      input.description?.trim() ||
+      (input.kind === 'income_fixed' || input.kind === 'income_variable'
+        ? 'Ingreso'
+        : input.kind === 'expense_fixed' || input.kind === 'expense_variable'
+          ? 'Gasto'
+          : input.kind === 'debt_payment'
+            ? 'Pago de deuda'
+            : input.kind === 'credit_card_payment'
+              ? 'Pago de tarjeta'
+              : input.kind === 'savings_contribution'
+                ? 'Aporte de ahorro'
+                : 'Movimiento recurrente');
+
     const [rule] = await db
       .insert(recurringRules)
       .values({
         userId,
         accountId: input.accountId,
+        transferAccountId: input.transferAccountId ?? null,
         categoryId: input.categoryId ?? null,
+        debtId: input.kind === 'debt_payment' ? (input.debtId ?? null) : null,
+        savingsGoalId: input.kind === 'savings_contribution' ? (input.savingsGoalId ?? null) : null,
         kind: input.kind,
-        name:
-          input.description?.trim() ||
-          (input.kind === 'income_fixed' ? 'Ingreso fijo' : 'Gasto fijo'),
+        name: ruleName,
         amountMinor,
         currency: input.currency,
         frequency: 'monthly',
@@ -388,6 +407,56 @@ export async function updateRecurringTransaction(
     })
     .where(and(eq(recurringRules.userId, userId), eq(recurringRules.id, rule.id)));
 
+  return row;
+}
+
+/**
+ * Marca una transacción recurrente como confirmada/no-confirmada.
+ * Si la ocurrencia es virtual, se materializa como fila real con el flag.
+ * Es solo un indicador visual: no afecta saldos ni reportes.
+ */
+export async function togglePaid(userId: UserId, input: TogglePaidInput) {
+  if (input.id.startsWith('virtual:')) {
+    const parts = input.id.split(':');
+    if (parts.length < 3) throw new ValidationError('Identificador inválido');
+    const ruleId = parts[1] as string;
+    const occurredAt = parts.slice(2).join(':');
+
+    const rule = await db.query.recurringRules.findFirst({
+      where: and(eq(recurringRules.userId, userId), eq(recurringRules.id, ruleId)),
+    });
+    if (!rule) throw new NotFoundError('Regla recurrente');
+
+    const [row] = await db
+      .insert(transactions)
+      .values({
+        userId,
+        accountId: rule.accountId,
+        transferAccountId: rule.transferAccountId ?? null,
+        categoryId: rule.categoryId,
+        debtId: rule.debtId ?? null,
+        savingsGoalId: rule.savingsGoalId ?? null,
+        kind: rule.kind,
+        amountMinor: rule.amountMinor,
+        currency: rule.currency,
+        occurredAt,
+        description: rule.name,
+        notes: rule.notes,
+        isPaid: input.isPaid,
+        isRecurring: true,
+        recurringRuleId: rule.id,
+        quincena: getQuincenaFromIsoDate(occurredAt),
+      })
+      .returning();
+    return row;
+  }
+
+  const [row] = await db
+    .update(transactions)
+    .set({ isPaid: input.isPaid, updatedAt: sql`now()` })
+    .where(and(eq(transactions.userId, userId), eq(transactions.id, input.id)))
+    .returning();
+  if (!row) throw new NotFoundError('Transacción');
   return row;
 }
 

@@ -19,8 +19,13 @@ import { type PayFrequency, periodsForMonth } from '@/lib/periods';
 export const metadata: Metadata = { title: 'Resumen' };
 export const dynamic = 'force-dynamic';
 
-function greeting(): string {
-  const h = new Date().getHours();
+function greeting(timezone: string): string {
+  const hourStr = new Intl.DateTimeFormat('en-US', {
+    hour: 'numeric',
+    hour12: false,
+    timeZone: timezone,
+  }).format(new Date());
+  const h = Number.parseInt(hourStr, 10);
   if (h < 12) return 'Buenos días';
   if (h < 19) return 'Buenas tardes';
   return 'Buenas noches';
@@ -74,7 +79,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     <div className="mx-auto w-full max-w-6xl space-y-6">
       <header>
         <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">
-          {greeting()}
+          {greeting(user.timezone)}
           {user.name ? `, ${user.name.split(' ')[0]}` : ''}
         </h2>
         <p className="text-sm text-muted-foreground">Resumen de {monthLabel}.</p>

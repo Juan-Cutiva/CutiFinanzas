@@ -6,6 +6,7 @@ import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -17,7 +18,7 @@ import {
 import { dayjs, formatAmount, formatDate } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import { cn } from '@/lib/utils';
-import { deleteTransactionAction } from '../actions';
+import { deleteTransactionAction, togglePaidAction } from '../actions';
 import { isExpenseKind, isIncomeKind } from '../domain';
 import {
   type CategoryOption,
@@ -35,6 +36,7 @@ export interface TxListItem {
   notes: string | null;
   categoryId: string | null;
   isRecurring: boolean;
+  isPaid: boolean;
   recurringRuleId: string | null;
   account: { name: string } | null;
   transferAccount: { name: string } | null;
@@ -181,10 +183,17 @@ function TxRow({ tx, onEdit, onDelete }: RowProps) {
   const income = isIncomeKind(tx.kind);
   const transfer = tx.kind === 'transfer' || tx.kind === 'credit_card_payment';
   const isVirtual = tx.id.startsWith('virtual:');
+  const isRecurringRow = tx.isRecurring || isVirtual;
   const amountMajor = Number(tx.amountMinor) / 100;
   const displayAmount = expense ? -amountMajor : amountMajor;
   const Icon = transfer ? ArrowLeftRight : income ? ArrowUpRight : ArrowDownLeft;
   const editable = !NON_EDITABLE_KINDS.has(tx.kind);
+
+  const togglePaid = useAction(togglePaidAction, {
+    onError: ({ error }) => {
+      toast.error(error.serverError ?? 'No se pudo actualizar');
+    },
+  });
 
   return (
     <li
@@ -193,6 +202,15 @@ function TxRow({ tx, onEdit, onDelete }: RowProps) {
         isVirtual && 'opacity-80',
       )}
     >
+      {isRecurringRow ? (
+        <Checkbox
+          checked={tx.isPaid}
+          aria-label={tx.isPaid ? 'Marcar como pendiente' : 'Marcar como confirmado'}
+          disabled={togglePaid.isPending}
+          onCheckedChange={(checked) => togglePaid.execute({ id: tx.id, isPaid: checked === true })}
+          className="shrink-0"
+        />
+      ) : null}
       <div
         className="grid size-10 shrink-0 place-items-center rounded-full"
         style={{

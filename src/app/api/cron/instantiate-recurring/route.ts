@@ -38,7 +38,10 @@ export async function GET(req: NextRequest) {
       await db.insert(transactions).values({
         userId: rule.userId,
         accountId: rule.accountId,
+        transferAccountId: rule.transferAccountId ?? null,
         categoryId: rule.categoryId ?? null,
+        debtId: rule.debtId ?? null,
+        savingsGoalId: rule.savingsGoalId ?? null,
         kind: rule.kind,
         amountMinor: rule.amountMinor,
         currency: rule.currency,

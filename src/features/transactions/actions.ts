@@ -5,11 +5,13 @@ import { authedAction } from '@/lib/safe-action';
 import {
   createTransaction,
   deleteTransaction,
+  togglePaid,
   updateRecurringTransaction,
   updateTransaction,
 } from './mutations';
 import {
   deleteTransactionSchema,
+  togglePaidSchema,
   transactionInputSchema,
   updateRecurringTransactionSchema,
   updateTransactionSchema,
@@ -38,6 +40,15 @@ export const updateRecurringTransactionAction = authedAction
   .inputSchema(updateRecurringTransactionSchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await updateRecurringTransaction(ctx.userId, parsedInput);
+    revalidateAfterTransaction(ctx.userId);
+    return row;
+  });
+
+export const togglePaidAction = authedAction
+  .metadata({ actionName: 'togglePaid' })
+  .inputSchema(togglePaidSchema)
+  .action(async ({ parsedInput, ctx }) => {
+    const row = await togglePaid(ctx.userId, parsedInput);
     revalidateAfterTransaction(ctx.userId);
     return row;
   });

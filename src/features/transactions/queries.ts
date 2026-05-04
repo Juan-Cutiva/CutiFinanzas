@@ -11,11 +11,12 @@ const EXPENSE_KINDS = [
   'expense_variable',
   'debt_payment',
   'savings_contribution',
+  'credit_card_payment',
 ] as const;
 
 const INCOME_KINDS = ['income', 'income_fixed', 'income_variable'] as const;
 
-const NON_CASHFLOW_KINDS = new Set(['transfer', 'credit_card_payment']);
+const NON_CASHFLOW_KINDS = new Set(['transfer']);
 
 function monthRange(year: number, month: number): { from: string; to: string } {
   const from = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -32,7 +33,10 @@ interface VirtualOccurrence {
   currency: string;
   description: string;
   accountId: string;
+  transferAccountId: string | null;
   categoryId: string | null;
+  debtId: string | null;
+  savingsGoalId: string | null;
   notes: string | null;
 }
 
@@ -106,7 +110,10 @@ const virtualOccurrencesForRange = cache(async function virtualOccurrencesForRan
           currency: rule.currency,
           description: rule.name,
           accountId: rule.accountId,
+          transferAccountId: rule.transferAccountId ?? null,
           categoryId: rule.categoryId,
+          debtId: rule.debtId ?? null,
+          savingsGoalId: rule.savingsGoalId ?? null,
           notes: rule.notes,
         });
       }
@@ -130,7 +137,11 @@ export async function listTransactionsByMonth(userId: UserId, year: number, mont
 
   if (virtuals.length === 0) return real;
 
-  const accountIds = [...new Set(virtuals.map((v) => v.accountId))];
+  const accountIds = [
+    ...new Set(
+      virtuals.flatMap((v) => [v.accountId, v.transferAccountId]).filter(Boolean) as string[],
+    ),
+  ];
   const categoryIds = [...new Set(virtuals.map((v) => v.categoryId).filter(Boolean) as string[])];
   const [accountsList, categoriesList] = await Promise.all([
     accountIds.length > 0
@@ -148,8 +159,10 @@ export async function listTransactionsByMonth(userId: UserId, year: number, mont
     id: `virtual:${v.ruleId}:${v.occurredAt}`,
     userId,
     accountId: v.accountId,
-    transferAccountId: null,
+    transferAccountId: v.transferAccountId,
     categoryId: v.categoryId,
+    debtId: v.debtId,
+    savingsGoalId: v.savingsGoalId,
     kind: v.kind as Real['kind'],
     amountMinor: v.amountMinor,
     currency: v.currency,
@@ -167,7 +180,7 @@ export async function listTransactionsByMonth(userId: UserId, year: number, mont
     createdAt: new Date(),
     updatedAt: new Date(),
     account: accountMap.get(v.accountId) ?? null,
-    transferAccount: null,
+    transferAccount: v.transferAccountId ? (accountMap.get(v.transferAccountId) ?? null) : null,
     category: v.categoryId ? (categoryMap.get(v.categoryId) ?? null) : null,
   })) as unknown as Real[];
 
@@ -246,7 +259,7 @@ export async function listIncomeByMonth(userId: UserId, year: number, month: num
   );
 }
 
-const PAGE_EXPENSE_KINDS = ['expense_fixed', 'expense_variable'] as const;
+const PAGE_EXPENSE_KINDS = ['expense_fixed', 'expense_variable', 'credit_card_payment'] as const;
 
 export async function listExpenseByMonth(userId: UserId, year: number, month: number) {
   const { from, to } = monthRange(year, month);
@@ -350,6 +363,7 @@ export async function totalsByMonth(userId: UserId, year: number, month: number)
     incomeVariableMinor: incomeVariable,
     expenseFixedMinor: map.expense_fixed ?? 0,
     expenseVariableMinor: map.expense_variable ?? 0,
+    creditCardPaymentMinor: map.credit_card_payment ?? 0,
     debtPaymentMinor: map.debt_payment ?? 0,
     savingsContributionMinor: map.savings_contribution ?? 0,
   };
@@ -386,7 +400,8 @@ export async function totalsForRange(userId: UserId, fromDate: string, toDate: s
     (map.expense_fixed ?? 0) +
     (map.expense_variable ?? 0) +
     (map.debt_payment ?? 0) +
-    (map.savings_contribution ?? 0);
+    (map.savings_contribution ?? 0) +
+    (map.credit_card_payment ?? 0);
   return {
     incomeMinor: incomeFixed + incomeVariable,
     expenseMinor: expense,

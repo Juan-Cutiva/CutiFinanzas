@@ -32,15 +32,31 @@ export default async function GastosPage({ searchParams }: PageProps) {
     listCategoriesByUser(userId),
   ]);
 
-  const totalMinor = totals.expenseFixedMinor + totals.expenseVariableMinor;
+  const totalMinor =
+    totals.expenseFixedMinor + totals.expenseVariableMinor + totals.creditCardPaymentMinor;
+  const recurring = items.filter((t) => t.isRecurring || t.id.startsWith('virtual:'));
+  const confirmedCount = recurring.filter((t) => t.isPaid).length;
+  const recurringTotal = recurring.length;
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
-      <header>
-        <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Gastos</h2>
-        <p className="text-sm text-muted-foreground">
-          {monthLabel} — gastos fijos y variables del mes.
-        </p>
+      <header className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Gastos</h2>
+          <p className="text-sm text-muted-foreground">
+            {monthLabel} — gastos fijos y variables del mes.
+          </p>
+        </div>
+        {recurringTotal > 0 ? (
+          <div className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-right">
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+              Confirmados
+            </p>
+            <p className="font-mono tabular-nums text-sm font-semibold">
+              {confirmedCount}/{recurringTotal}
+            </p>
+          </div>
+        ) : null}
       </header>
 
       <section className="grid gap-3 sm:grid-cols-3">

@@ -24,6 +24,40 @@ export const TX_KIND_LABELS: Record<(typeof TX_KINDS)[number], string> = {
   refund: 'Devolución / reembolso',
 };
 
+/**
+ * Categorías primarias que el usuario elige primero en el form,
+ * antes de afinar con la frecuencia (fijo/variable).
+ */
+export const TX_PRIMARY_KINDS = [
+  'income',
+  'expense',
+  'credit_card_payment',
+  'debt_payment',
+  'transfer',
+  'savings_contribution',
+  'refund',
+] as const;
+
+export type PrimaryKind = (typeof TX_PRIMARY_KINDS)[number];
+
+export const PRIMARY_KIND_LABELS: Record<PrimaryKind, string> = {
+  income: 'Ingreso',
+  expense: 'Gasto',
+  credit_card_payment: 'Pago de tarjeta de crédito',
+  debt_payment: 'Pago de deuda',
+  transfer: 'Transferencia entre cuentas',
+  savings_contribution: 'Aporte a meta de ahorro',
+  refund: 'Devolución / reembolso',
+};
+
+/** Kinds primarios que aceptan elección Fijo/Variable. */
+export const KINDS_WITH_FREQUENCY = new Set<PrimaryKind>([
+  'income',
+  'expense',
+  'credit_card_payment',
+  'debt_payment',
+]);
+
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)');
 
 export const transactionInputSchema = z
@@ -40,6 +74,7 @@ export const transactionInputSchema = z
     description: z.string().trim().max(200).optional(),
     notes: z.string().trim().max(2000).optional(),
     isPaid: z.boolean().default(true),
+    isRecurring: z.boolean().default(false),
     receiptUrl: z.string().url().optional(),
   })
   .superRefine((data, ctx) => {
@@ -108,6 +143,12 @@ export const updateRecurringTransactionSchema = z.object({
   mode: z.enum(['this_month', 'forward']),
 });
 export type UpdateRecurringTransactionInput = z.infer<typeof updateRecurringTransactionSchema>;
+
+export const togglePaidSchema = z.object({
+  id: z.string().min(1),
+  isPaid: z.boolean(),
+});
+export type TogglePaidInput = z.infer<typeof togglePaidSchema>;
 
 export const deleteTransactionSchema = z.object({ id: z.string().min(1) });
 

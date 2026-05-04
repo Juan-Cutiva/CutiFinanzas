@@ -13,7 +13,9 @@ import {
 } from 'drizzle-orm/pg-core';
 import { accounts } from './accounts';
 import { categories } from './categories';
+import { debts } from './debts';
 import { recurrenceFrequency, transactionKind } from './enums';
+import { savingsGoals } from './savings';
 import { users } from './users';
 
 export const recurringRules = pgTable(
@@ -26,7 +28,14 @@ export const recurringRules = pgTable(
     accountId: text('account_id')
       .notNull()
       .references(() => accounts.id, { onDelete: 'cascade' }),
+    transferAccountId: text('transfer_account_id').references(() => accounts.id, {
+      onDelete: 'set null',
+    }),
     categoryId: text('category_id').references(() => categories.id, { onDelete: 'set null' }),
+    debtId: text('debt_id').references(() => debts.id, { onDelete: 'set null' }),
+    savingsGoalId: text('savings_goal_id').references(() => savingsGoals.id, {
+      onDelete: 'set null',
+    }),
     kind: transactionKind('kind').notNull(),
     name: varchar('name', { length: 200 }).notNull(),
     amountMinor: bigint('amount_minor', { mode: 'bigint' }).notNull(),
