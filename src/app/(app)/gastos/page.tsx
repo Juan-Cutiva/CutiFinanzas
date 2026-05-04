@@ -33,7 +33,10 @@ export default async function GastosPage({ searchParams }: PageProps) {
   ]);
 
   const totalMinor =
-    totals.expenseFixedMinor + totals.expenseVariableMinor + totals.creditCardPaymentMinor;
+    totals.expenseFixedMinor +
+    totals.expenseVariableMinor +
+    totals.creditCardPaymentMinor +
+    totals.debtPaymentMinor;
   const recurring = items.filter((t) => t.isRecurring || t.id.startsWith('virtual:'));
   const confirmedCount = recurring.filter((t) => t.isPaid).length;
   const recurringTotal = recurring.length;

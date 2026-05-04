@@ -259,7 +259,12 @@ export async function listIncomeByMonth(userId: UserId, year: number, month: num
   );
 }
 
-const PAGE_EXPENSE_KINDS = ['expense_fixed', 'expense_variable', 'credit_card_payment'] as const;
+const PAGE_EXPENSE_KINDS = [
+  'expense_fixed',
+  'expense_variable',
+  'credit_card_payment',
+  'debt_payment',
+] as const;
 
 export async function listExpenseByMonth(userId: UserId, year: number, month: number) {
   const { from, to } = monthRange(year, month);
@@ -281,7 +286,13 @@ export async function listExpenseByMonth(userId: UserId, year: number, month: nu
   );
   if (expenseVirtuals.length === 0) return real;
 
-  const accountIds = [...new Set(expenseVirtuals.map((v) => v.accountId))];
+  const accountIds = [
+    ...new Set(
+      expenseVirtuals
+        .flatMap((v) => [v.accountId, v.transferAccountId])
+        .filter(Boolean) as string[],
+    ),
+  ];
   const categoryIds = [
     ...new Set(expenseVirtuals.map((v) => v.categoryId).filter(Boolean) as string[]),
   ];
@@ -301,10 +312,10 @@ export async function listExpenseByMonth(userId: UserId, year: number, month: nu
     id: `virtual:${v.ruleId}:${v.occurredAt}`,
     userId,
     accountId: v.accountId,
-    transferAccountId: null,
+    transferAccountId: v.transferAccountId,
     categoryId: v.categoryId,
-    debtId: null,
-    savingsGoalId: null,
+    debtId: v.debtId,
+    savingsGoalId: v.savingsGoalId,
     kind: v.kind as Real['kind'],
     amountMinor: v.amountMinor,
     currency: v.currency,
@@ -322,7 +333,7 @@ export async function listExpenseByMonth(userId: UserId, year: number, month: nu
     createdAt: new Date(),
     updatedAt: new Date(),
     account: accountMap.get(v.accountId) ?? null,
-    transferAccount: null,
+    transferAccount: v.transferAccountId ? (accountMap.get(v.transferAccountId) ?? null) : null,
     category: v.categoryId ? (categoryMap.get(v.categoryId) ?? null) : null,
   })) as unknown as Real[];
 
