@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  boolean,
   char,
   index,
   integer,
@@ -29,6 +30,7 @@ export const budgets = pgTable(
     amountMinor: bigint('amount_minor', { mode: 'bigint' }).notNull(),
     currency: char('currency', { length: 3 }).notNull(),
     rolloverEnabled: integer('rollover_enabled').notNull().default(0),
+    isRecurring: boolean('is_recurring').notNull().default(true),
     notes: text('notes'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().default(sql`now()`),
@@ -36,6 +38,7 @@ export const budgets = pgTable(
   (t) => [
     index('idx_budgets_user_period').on(t.userId, t.year, t.month),
     uniqueIndex('uniq_budget_per_period').on(t.userId, t.categoryId, t.year, t.month, t.period),
+    index('idx_budgets_user_cat_recurring').on(t.userId, t.categoryId, t.isRecurring),
   ],
 );
 

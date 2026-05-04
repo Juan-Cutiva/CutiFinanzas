@@ -26,5 +26,13 @@ export const updateBudgetSchema = z.object({
 });
 export type UpdateBudgetInput = z.infer<typeof updateBudgetSchema>;
 
+export const updateRecurringBudgetSchema = z.object({
+  id: z.string().min(1),
+  amount: z.coerce.number().nonnegative('El monto no puede ser negativo'),
+  notes: z.string().trim().max(500).nullable().optional(),
+  mode: z.enum(['this_month', 'forward']),
+});
+export type UpdateRecurringBudgetInput = z.infer<typeof updateRecurringBudgetSchema>;
+
 export const deleteBudgetSchema = z.object({ id: z.string().min(1) });
 export { PERIODS };

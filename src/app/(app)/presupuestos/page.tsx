@@ -36,6 +36,10 @@ export default async function PresupuestosPage({ searchParams }: PageProps) {
     amountMinor: b.amountMinor,
     currency: b.currency,
     spentMinor: spentByCategory.find((s) => s.categoryId === b.categoryId)?.total ?? 0,
+    year: b.year,
+    month: b.month,
+    notes: b.notes,
+    isVirtual: b.isVirtual,
     category: { name: b.category.name, color: b.category.color },
   }));
 

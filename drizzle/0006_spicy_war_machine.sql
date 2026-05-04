@@ -1,0 +1,2 @@
+ALTER TABLE "budgets" ADD COLUMN "is_recurring" boolean DEFAULT true NOT NULL;--> statement-breakpoint
+CREATE INDEX "idx_budgets_user_cat_recurring" ON "budgets" USING btree ("user_id","category_id","is_recurring");
