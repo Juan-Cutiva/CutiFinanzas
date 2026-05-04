@@ -1,5 +1,4 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { getOrCreateUser } from '@/db/queries/users';
@@ -90,14 +89,16 @@ export default async function AjustesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Datos</CardTitle>
+          <CardTitle>Exportar</CardTitle>
           <CardDescription>
-            Importa tu Excel mensual o exporta una copia completa en JSON.
+            Descarga una copia completa de tus datos en Excel o JSON.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
-            <Link href="/importar">Importar Excel</Link>
+          <Button asChild>
+            <a href="/api/export/excel" download>
+              Exportar a Excel
+            </a>
           </Button>
           <Button asChild variant="outline">
             <a href="/api/export/json" download>
