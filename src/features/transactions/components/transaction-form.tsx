@@ -8,10 +8,12 @@ import { toast } from 'sonner';
 import type { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
+import { DayOfMonthPicker, nextDateForDayOfMonth } from '@/components/ui/day-of-month-picker';
 import { FileUpload } from '@/components/ui/file-upload';
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -27,7 +29,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { dayjs } from '@/lib/format';
+import { dayjs, formatAmount } from '@/lib/format';
+import type { CurrencyCode } from '@/lib/money';
 import { createTransactionAction } from '../actions';
 import { type TransactionInput, TX_KIND_LABELS, transactionInputSchema } from '../schema';
 
@@ -36,6 +39,8 @@ interface AccountOption {
   name: string;
   currency: string;
   type: string;
+  balanceMinor: string;
+  creditLimitMinor: string | null;
 }
 
 interface CategoryOption {
@@ -47,6 +52,7 @@ interface DebtOption {
   id: string;
   name: string;
   currency: string;
+  currentBalanceMinor: string;
 }
 
 interface SavingsOption {
@@ -76,6 +82,16 @@ export function TransactionForm({
 }: Props) {
   const today = dayjs().format('YYYY-MM-DD');
 
+  const assetAccounts = React.useMemo(
+    () => accounts.filter((a) => a.type !== 'credit_card' && a.type !== 'loan'),
+    [accounts],
+  );
+  const creditCardAccounts = React.useMemo(
+    () => accounts.filter((a) => a.type === 'credit_card'),
+    [accounts],
+  );
+  const hasCreditCard = creditCardAccounts.length > 0;
+
   const form = useForm<z.input<typeof transactionInputSchema>, unknown, TransactionInput>({
     resolver: zodResolver(transactionInputSchema),
     defaultValues: {
@@ -96,19 +112,97 @@ export function TransactionForm({
 
   const watchedKind = form.watch('kind');
   const watchedAccountId = form.watch('accountId');
+  const watchedTransferAccountId = form.watch('transferAccountId');
+  const watchedDebtId = form.watch('debtId');
+  const watchedAmount = form.watch('amount');
   const selectedAccount = accounts.find((a) => a.id === watchedAccountId);
+  const selectedTransferAccount = accounts.find((a) => a.id === watchedTransferAccountId);
+  const selectedDebt = debts.find((d) => d.id === watchedDebtId);
+
+  const isFixed = watchedKind === 'income_fixed' || watchedKind === 'expense_fixed';
+  const isTransfer = watchedKind === 'transfer';
+  const isCreditCardPayment = watchedKind === 'credit_card_payment';
+  const isExpense = watchedKind === 'expense_fixed' || watchedKind === 'expense_variable';
+  const isDebtPayment = watchedKind === 'debt_payment';
+  const isSavingsContribution = watchedKind === 'savings_contribution';
+  const accountIsCreditCard = selectedAccount?.type === 'credit_card';
+
+  const accountsForOrigin = isCreditCardPayment ? assetAccounts : accounts;
+  const accountsForDestination = isCreditCardPayment
+    ? creditCardAccounts
+    : accounts.filter((a) => a.id !== watchedAccountId);
+
+  const accountBalanceMajor = selectedAccount
+    ? Number(BigInt(selectedAccount.balanceMinor)) / 100
+    : 0;
+  const accountCreditLimitMajor = selectedAccount?.creditLimitMinor
+    ? Number(BigInt(selectedAccount.creditLimitMinor)) / 100
+    : 0;
+  const availableMajor = accountIsCreditCard
+    ? Math.max(0, accountCreditLimitMajor - accountBalanceMajor)
+    : accountBalanceMajor;
+
+  const reducesAccount =
+    isExpense || isTransfer || isCreditCardPayment || isDebtPayment || isSavingsContribution;
+  const overspending =
+    !!selectedAccount &&
+    reducesAccount &&
+    Number(watchedAmount ?? 0) > 0 &&
+    Number(watchedAmount) > availableMajor;
+
+  const destinationDebtMajor =
+    isCreditCardPayment && selectedTransferAccount
+      ? Number(BigInt(selectedTransferAccount.balanceMinor)) / 100
+      : 0;
+  const overpayingCard =
+    isCreditCardPayment &&
+    !!selectedTransferAccount &&
+    Number(watchedAmount ?? 0) > 0 &&
+    Number(watchedAmount) > destinationDebtMajor;
+
+  const debtBalanceMajor = selectedDebt
+    ? Number(BigInt(selectedDebt.currentBalanceMinor)) / 100
+    : 0;
+  const overpayingDebt =
+    isDebtPayment &&
+    !!selectedDebt &&
+    Number(watchedAmount ?? 0) > 0 &&
+    Number(watchedAmount) > debtBalanceMajor;
 
   React.useEffect(() => {
-    if (watchedKind === 'expense_fixed' || watchedKind === 'expense_variable') {
+    if (isExpense) {
       const current = form.getValues('categoryId');
       if (!current && categories[0]) form.setValue('categoryId', categories[0].id);
     } else {
       form.setValue('categoryId', null);
     }
-    if (watchedKind !== 'transfer') form.setValue('transferAccountId', null);
-    if (watchedKind !== 'debt_payment') form.setValue('debtId', null);
-    if (watchedKind !== 'savings_contribution') form.setValue('savingsGoalId', null);
-  }, [watchedKind, categories, form]);
+    if (!isTransfer && !isCreditCardPayment) form.setValue('transferAccountId', null);
+    if (!isDebtPayment) form.setValue('debtId', null);
+    if (!isSavingsContribution) form.setValue('savingsGoalId', null);
+
+    if (isCreditCardPayment) {
+      const currentAccount = form.getValues('accountId');
+      if (!assetAccounts.find((a) => a.id === currentAccount) && assetAccounts[0]) {
+        form.setValue('accountId', assetAccounts[0].id);
+        form.setValue('currency', assetAccounts[0].currency);
+      }
+      const currentDest = form.getValues('transferAccountId');
+      if (!creditCardAccounts.find((a) => a.id === currentDest) && creditCardAccounts[0]) {
+        form.setValue('transferAccountId', creditCardAccounts[0].id);
+      }
+    }
+  }, [
+    watchedKind,
+    isExpense,
+    isTransfer,
+    isCreditCardPayment,
+    isDebtPayment,
+    isSavingsContribution,
+    assetAccounts,
+    creditCardAccounts,
+    categories,
+    form,
+  ]);
 
   const { execute, isPending } = useAction(createTransactionAction, {
     onSuccess: () => {
@@ -147,11 +241,13 @@ export function TransactionForm({
     );
   }
 
-  const isTransfer = watchedKind === 'transfer';
-  const isExpense = watchedKind === 'expense_fixed' || watchedKind === 'expense_variable';
-  const isDebtPayment = watchedKind === 'debt_payment';
-  const isSavingsContribution = watchedKind === 'savings_contribution';
-  const accountIsCreditCard = selectedAccount?.type === 'credit_card';
+  const visibleKinds = (Object.keys(TX_KIND_LABELS) as Array<keyof typeof TX_KIND_LABELS>).filter(
+    (k) => k !== 'credit_card_payment' || hasCreditCard,
+  );
+
+  function setOccurredAtFromDayOfMonth(day: number) {
+    form.setValue('occurredAt', nextDateForDayOfMonth(day));
+  }
 
   return (
     <Form {...form}>
@@ -169,9 +265,9 @@ export function TransactionForm({
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {Object.entries(TX_KIND_LABELS).map(([k, label]) => (
+                  {visibleKinds.map((k) => (
                     <SelectItem key={k} value={k}>
-                      {label}
+                      {TX_KIND_LABELS[k]}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -208,7 +304,13 @@ export function TransactionForm({
           name="accountId"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>{isTransfer ? 'Desde la cuenta' : 'Cuenta'}</FormLabel>
+              <FormLabel>
+                {isCreditCardPayment
+                  ? 'Pago desde la cuenta'
+                  : isTransfer
+                    ? 'Desde la cuenta'
+                    : 'Cuenta'}
+              </FormLabel>
               <Select
                 value={field.value}
                 onValueChange={(v) => {
@@ -223,32 +325,72 @@ export function TransactionForm({
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  {accounts.map((a) => (
+                  {accountsForOrigin.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
                       {a.name} · {a.currency}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              {selectedAccount ? (
+                <FormDescription>
+                  {accountIsCreditCard ? (
+                    <>
+                      Cupo disponible{' '}
+                      <span className="font-mono tabular-nums font-semibold text-foreground">
+                        {formatAmount(availableMajor, selectedAccount.currency as CurrencyCode)}
+                      </span>{' '}
+                      · deuda actual{' '}
+                      {formatAmount(accountBalanceMajor, selectedAccount.currency as CurrencyCode)}
+                    </>
+                  ) : (
+                    <>
+                      Saldo disponible{' '}
+                      <span
+                        className={`font-mono tabular-nums font-semibold ${
+                          accountBalanceMajor >= 0 ? 'text-amount-positive' : 'text-amount-negative'
+                        }`}
+                      >
+                        {formatAmount(
+                          accountBalanceMajor,
+                          selectedAccount.currency as CurrencyCode,
+                        )}
+                      </span>
+                    </>
+                  )}
+                </FormDescription>
+              ) : null}
               <FormMessage />
             </FormItem>
           )}
         />
 
-        {accountIsCreditCard && watchedKind.startsWith('income') ? (
-          <p className="rounded-md border border-[color:var(--warning)]/40 bg-[color:var(--warning)]/10 px-3 py-2 text-xs text-[color:var(--warning)]">
-            Tip: si estás pagando tu tarjeta, usa <strong>Pago de deuda</strong> y elige la tarjeta
-            como deuda. Aquí estarías sumando saldo a la tarjeta misma.
+        {overspending ? (
+          <p className="rounded-md border border-(--expense)/40 bg-(--expense)/10 px-3 py-2 text-xs text-expense">
+            {accountIsCreditCard
+              ? `Excedes el cupo disponible (${formatAmount(availableMajor, (selectedAccount?.currency ?? 'COP') as CurrencyCode)}).`
+              : `No tienes saldo suficiente. Disponible: ${formatAmount(availableMajor, (selectedAccount?.currency ?? 'COP') as CurrencyCode)}.`}
           </p>
         ) : null}
 
-        {isTransfer ? (
+        {accountIsCreditCard &&
+        (watchedKind === 'income_fixed' || watchedKind === 'income_variable') ? (
+          <p className="rounded-md border border-[color:var(--warning)]/40 bg-[color:var(--warning)]/10 px-3 py-2 text-xs text-[color:var(--warning)]">
+            Tip: si estás abonando a tu tarjeta, usa <strong>Pago de tarjeta de crédito</strong> con
+            la cuenta de origen real (débito/ahorro). Aquí estarías sumando saldo a la tarjeta
+            misma.
+          </p>
+        ) : null}
+
+        {isTransfer || isCreditCardPayment ? (
           <FormField
             control={form.control}
             name="transferAccountId"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>A la cuenta</FormLabel>
+                <FormLabel>
+                  {isCreditCardPayment ? 'Tarjeta a la que pagas' : 'A la cuenta'}
+                </FormLabel>
                 <Select value={field.value ?? ''} onValueChange={field.onChange}>
                   <FormControl>
                     <SelectTrigger>
@@ -256,19 +398,58 @@ export function TransactionForm({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {accounts
-                      .filter((a) => a.id !== watchedAccountId)
-                      .map((a) => (
+                    {accountsForDestination.length === 0 ? (
+                      <SelectItem value="-" disabled>
+                        {isCreditCardPayment
+                          ? 'Sin tarjetas registradas'
+                          : 'Sin cuentas disponibles'}
+                      </SelectItem>
+                    ) : (
+                      accountsForDestination.map((a) => (
                         <SelectItem key={a.id} value={a.id}>
                           {a.name} · {a.currency}
                         </SelectItem>
-                      ))}
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
+                {isCreditCardPayment && selectedTransferAccount ? (
+                  <FormDescription>
+                    Deuda actual{' '}
+                    <span
+                      className={`font-mono tabular-nums font-semibold ${
+                        destinationDebtMajor > 0 ? 'text-amount-negative' : 'text-foreground'
+                      }`}
+                    >
+                      {formatAmount(
+                        destinationDebtMajor,
+                        selectedTransferAccount.currency as CurrencyCode,
+                      )}
+                    </span>
+                    {selectedTransferAccount.creditLimitMinor ? (
+                      <>
+                        {' '}
+                        · cupo total{' '}
+                        {formatAmount(
+                          Number(BigInt(selectedTransferAccount.creditLimitMinor)) / 100,
+                          selectedTransferAccount.currency as CurrencyCode,
+                        )}
+                      </>
+                    ) : null}
+                  </FormDescription>
+                ) : null}
                 <FormMessage />
               </FormItem>
             )}
           />
+        ) : null}
+
+        {overpayingCard && selectedTransferAccount ? (
+          <p className="rounded-md border border-(--expense)/40 bg-(--expense)/10 px-3 py-2 text-xs text-expense">
+            El pago supera la deuda actual de la tarjeta (
+            {formatAmount(destinationDebtMajor, selectedTransferAccount.currency as CurrencyCode)}
+            ).
+          </p>
         ) : null}
 
         {isExpense ? (
@@ -325,10 +506,30 @@ export function TransactionForm({
                     )}
                   </SelectContent>
                 </Select>
+                {selectedDebt ? (
+                  <FormDescription>
+                    Saldo restante{' '}
+                    <span
+                      className={`font-mono tabular-nums font-semibold ${
+                        debtBalanceMajor > 0 ? 'text-amount-negative' : 'text-foreground'
+                      }`}
+                    >
+                      {formatAmount(debtBalanceMajor, selectedDebt.currency as CurrencyCode)}
+                    </span>
+                  </FormDescription>
+                ) : null}
                 <FormMessage />
               </FormItem>
             )}
           />
+        ) : null}
+
+        {overpayingDebt && selectedDebt ? (
+          <p className="rounded-md border border-(--expense)/40 bg-(--expense)/10 px-3 py-2 text-xs text-expense">
+            El pago supera el saldo restante de la deuda (
+            {formatAmount(debtBalanceMajor, selectedDebt.currency as CurrencyCode)}
+            ).
+          </p>
         ) : null}
 
         {isSavingsContribution ? (
@@ -364,29 +565,54 @@ export function TransactionForm({
           />
         ) : null}
 
-        <FormField
-          control={form.control}
-          name="occurredAt"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Fecha</FormLabel>
-              <FormControl>
-                <DatePicker value={field.value} onChange={field.onChange} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {isFixed ? (
+          <FormField
+            control={form.control}
+            name="occurredAt"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Día del mes en que se repite</FormLabel>
+                <FormControl>
+                  <DayOfMonthPicker
+                    value={Number.parseInt((field.value || today).slice(8, 10), 10)}
+                    onChange={(d) => setOccurredAtFromDayOfMonth(d)}
+                  />
+                </FormControl>
+                <FormDescription>
+                  La primera ocurrencia será el día {field.value?.slice(8, 10)} del mes en curso (o
+                  el siguiente si ya pasó). Cada mes se repetirá automáticamente en ese día.
+                </FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        ) : (
+          <FormField
+            control={form.control}
+            name="occurredAt"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Fecha</FormLabel>
+                <FormControl>
+                  <DatePicker value={field.value} onChange={field.onChange} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
         <FormField
           control={form.control}
           name="description"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Descripción (opcional)</FormLabel>
+              <FormLabel>Descripción {isFixed ? '' : '(opcional)'}</FormLabel>
               <FormControl>
                 <Input
-                  placeholder="Mercado, gasolina, salario..."
+                  placeholder={
+                    isFixed ? 'Ej. Salario quincenal, Spotify…' : 'Mercado, gasolina, salario...'
+                  }
                   {...field}
                   value={field.value ?? ''}
                 />
@@ -410,21 +636,28 @@ export function TransactionForm({
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="receiptUrl"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Comprobante (opcional)</FormLabel>
-              <FormControl>
-                <FileUpload value={field.value ?? undefined} onChange={field.onChange} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        {isFixed || isTransfer || isCreditCardPayment ? null : (
+          <FormField
+            control={form.control}
+            name="receiptUrl"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Comprobante (opcional)</FormLabel>
+                <FormControl>
+                  <FileUpload value={field.value ?? undefined} onChange={field.onChange} />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        )}
 
-        <Button type="submit" disabled={isPending} size="lg" className="mt-2">
+        <Button
+          type="submit"
+          disabled={isPending || overspending || overpayingCard || overpayingDebt}
+          size="lg"
+          className="mt-2"
+        >
           {isPending ? 'Guardando…' : 'Registrar'}
         </Button>
       </form>

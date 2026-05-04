@@ -9,6 +9,8 @@ export const transactionKind = pgEnum('transaction_kind', [
   'transfer',
   'debt_payment',
   'savings_contribution',
+  'credit_card_payment',
+  'refund',
 ]);
 
 export const accountType = pgEnum('account_type', [

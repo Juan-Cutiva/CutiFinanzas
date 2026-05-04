@@ -14,6 +14,8 @@ const EXPENSE_KINDS = [
 
 const INCOME_KINDS = ['income', 'income_fixed', 'income_variable'] as const;
 
+const NON_CASHFLOW_KINDS = new Set(['transfer', 'credit_card_payment']);
+
 function monthRange(year: number, month: number): { from: string; to: string } {
   const from = `${year}-${String(month).padStart(2, '0')}-01`;
   const lastDay = new Date(year, month, 0).getDate();
@@ -168,11 +170,9 @@ export async function listTransactionsByMonth(userId: UserId, year: number, mont
     category: v.categoryId ? (categoryMap.get(v.categoryId) ?? null) : null,
   })) as unknown as Real[];
 
-  const combined = [...real, ...virtualEntries].sort((a, b) => {
-    if (a.occurredAt !== b.occurredAt) return a.occurredAt < b.occurredAt ? 1 : -1;
-    return 0;
-  });
-  return combined;
+  return [...real, ...virtualEntries].sort((a, b) =>
+    a.occurredAt < b.occurredAt ? 1 : a.occurredAt > b.occurredAt ? -1 : 0,
+  );
 }
 
 export async function listIncomeByMonth(userId: UserId, year: number, month: number) {
@@ -195,13 +195,17 @@ export async function totalsByMonth(userId: UserId, year: number, month: number)
   ]);
 
   const map: Record<string, number> = {};
-  for (const r of rows) map[r.kind] = r.total ?? 0;
+  for (const r of rows) {
+    if (NON_CASHFLOW_KINDS.has(r.kind)) continue;
+    map[r.kind] = r.total ?? 0;
+  }
   for (const v of virtuals) {
+    if (NON_CASHFLOW_KINDS.has(v.kind)) continue;
     map[v.kind] = (map[v.kind] ?? 0) + Number(v.amountMinor);
   }
 
   const incomeFixed = (map.income_fixed ?? 0) + (map.income ?? 0);
-  const incomeVariable = map.income_variable ?? 0;
+  const incomeVariable = (map.income_variable ?? 0) + (map.refund ?? 0);
   return {
     incomeMinor: incomeFixed + incomeVariable,
     incomeFixedMinor: incomeFixed,
@@ -229,13 +233,17 @@ export async function totalsForRange(userId: UserId, fromDate: string, toDate: s
   ]);
 
   const map: Record<string, number> = {};
-  for (const r of rows) map[r.kind] = r.total ?? 0;
+  for (const r of rows) {
+    if (NON_CASHFLOW_KINDS.has(r.kind)) continue;
+    map[r.kind] = r.total ?? 0;
+  }
   for (const v of virtuals) {
+    if (NON_CASHFLOW_KINDS.has(v.kind)) continue;
     map[v.kind] = (map[v.kind] ?? 0) + Number(v.amountMinor);
   }
 
   const incomeFixed = (map.income_fixed ?? 0) + (map.income ?? 0);
-  const incomeVariable = map.income_variable ?? 0;
+  const incomeVariable = (map.income_variable ?? 0) + (map.refund ?? 0);
   const expense =
     (map.expense_fixed ?? 0) +
     (map.expense_variable ?? 0) +
@@ -268,15 +276,24 @@ export async function totalsByMonthForYear(userId: UserId, year: number) {
   const buckets: Record<number, Bucket> = {};
   for (let m = 1; m <= 12; m++) buckets[m] = { incomeMinor: 0, expenseMinor: 0 };
 
+  function classify(bucket: Bucket | undefined, kind: string, amount: number) {
+    if (!bucket) return;
+    if (NON_CASHFLOW_KINDS.has(kind)) return;
+    if (
+      kind === 'income' ||
+      kind === 'income_fixed' ||
+      kind === 'income_variable' ||
+      kind === 'refund'
+    ) {
+      bucket.incomeMinor += amount;
+    } else {
+      bucket.expenseMinor += amount;
+    }
+  }
+
   for (const r of rows) {
     const m = Number.parseInt(r.month, 10);
-    const bucket = buckets[m];
-    if (!bucket) continue;
-    if (r.kind === 'income' || r.kind === 'income_fixed' || r.kind === 'income_variable') {
-      bucket.incomeMinor += r.total ?? 0;
-    } else if (r.kind !== 'transfer') {
-      bucket.expenseMinor += r.total ?? 0;
-    }
+    classify(buckets[m], r.kind, r.total ?? 0);
   }
 
   const yearFrom = `${year}-01-01`;
@@ -284,13 +301,7 @@ export async function totalsByMonthForYear(userId: UserId, year: number) {
   const virtuals = await virtualOccurrencesForRange(userId, yearFrom, yearTo);
   for (const v of virtuals) {
     const m = Number.parseInt(v.occurredAt.slice(5, 7), 10);
-    const bucket = buckets[m];
-    if (!bucket) continue;
-    if (v.kind === 'income' || v.kind === 'income_fixed' || v.kind === 'income_variable') {
-      bucket.incomeMinor += Number(v.amountMinor);
-    } else if (v.kind !== 'transfer') {
-      bucket.expenseMinor += Number(v.amountMinor);
-    }
+    classify(buckets[m], v.kind, Number(v.amountMinor));
   }
 
   return Array.from({ length: 12 }, (_, i) => {
@@ -322,10 +333,11 @@ export async function dailyTotalsForMonth(userId: UserId, year: number, month: n
   const map: Record<string, number> = {};
   for (const r of rows) {
     if (
+      NON_CASHFLOW_KINDS.has(r.kind) ||
       r.kind === 'income' ||
       r.kind === 'income_fixed' ||
       r.kind === 'income_variable' ||
-      r.kind === 'transfer'
+      r.kind === 'refund'
     ) {
       continue;
     }
@@ -333,10 +345,11 @@ export async function dailyTotalsForMonth(userId: UserId, year: number, month: n
   }
   for (const v of virtuals) {
     if (
+      NON_CASHFLOW_KINDS.has(v.kind) ||
       v.kind === 'income' ||
       v.kind === 'income_fixed' ||
       v.kind === 'income_variable' ||
-      v.kind === 'transfer'
+      v.kind === 'refund'
     )
       continue;
     map[v.occurredAt] = (map[v.occurredAt] ?? 0) + Number(v.amountMinor);

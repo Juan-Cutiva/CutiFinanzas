@@ -49,6 +49,14 @@ export const transactionsRelations = relations(transactions, ({ one }) => ({
     fields: [transactions.categoryId],
     references: [categories.id],
   }),
+  debt: one(debts, {
+    fields: [transactions.debtId],
+    references: [debts.id],
+  }),
+  savingsGoal: one(savingsGoals, {
+    fields: [transactions.savingsGoalId],
+    references: [savingsGoals.id],
+  }),
   recurringRule: one(recurringRules, {
     fields: [transactions.recurringRuleId],
     references: [recurringRules.id],
@@ -70,14 +78,16 @@ export const budgetsRelations = relations(budgets, ({ one }) => ({
   category: one(categories, { fields: [budgets.categoryId], references: [categories.id] }),
 }));
 
-export const debtsRelations = relations(debts, ({ one }) => ({
+export const debtsRelations = relations(debts, ({ one, many }) => ({
   user: one(users, { fields: [debts.userId], references: [users.id] }),
   account: one(accounts, { fields: [debts.accountId], references: [accounts.id] }),
+  payments: many(transactions),
 }));
 
-export const savingsGoalsRelations = relations(savingsGoals, ({ one }) => ({
+export const savingsGoalsRelations = relations(savingsGoals, ({ one, many }) => ({
   user: one(users, { fields: [savingsGoals.userId], references: [users.id] }),
   account: one(accounts, { fields: [savingsGoals.accountId], references: [accounts.id] }),
+  contributions: many(transactions),
 }));
 
 export const pushSubscriptionsRelations = relations(pushSubscriptions, ({ one }) => ({

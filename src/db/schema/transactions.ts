@@ -13,7 +13,9 @@ import {
 } from 'drizzle-orm/pg-core';
 import { accounts } from './accounts';
 import { categories } from './categories';
+import { debts } from './debts';
 import { transactionKind } from './enums';
+import { savingsGoals } from './savings';
 import { users } from './users';
 
 export const transactions = pgTable(
@@ -30,6 +32,10 @@ export const transactions = pgTable(
       onDelete: 'set null',
     }),
     categoryId: text('category_id').references(() => categories.id, { onDelete: 'set null' }),
+    debtId: text('debt_id').references(() => debts.id, { onDelete: 'set null' }),
+    savingsGoalId: text('savings_goal_id').references(() => savingsGoals.id, {
+      onDelete: 'set null',
+    }),
     kind: transactionKind('kind').notNull(),
     amountMinor: bigint('amount_minor', { mode: 'bigint' }).notNull(),
     currency: char('currency', { length: 3 }).notNull(),
@@ -53,6 +59,8 @@ export const transactions = pgTable(
     index('idx_tx_category').on(t.categoryId),
     index('idx_tx_kind').on(t.kind),
     index('idx_tx_recurring').on(t.recurringRuleId),
+    index('idx_tx_debt').on(t.debtId),
+    index('idx_tx_savings_goal').on(t.savingsGoalId),
   ],
 );
 

@@ -62,8 +62,12 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     .filter((g) => g.currency === currency)
     .reduce((acc, g) => acc + Number(g.currentAmountMinor) / 100, 0);
 
-  const balanceMajor = accounts
-    .filter((a) => a.currency === currency)
+  const sameCurrency = accounts.filter((a) => a.currency === currency);
+  const assetBalanceMajor = sameCurrency
+    .filter((a) => a.classification === 'asset')
+    .reduce((acc, a) => acc + Number(a.balanceMinor) / 100, 0);
+  const liabilityBalanceMajor = sameCurrency
+    .filter((a) => a.classification === 'liability')
     .reduce((acc, a) => acc + Number(a.balanceMinor) / 100, 0);
 
   return (
@@ -90,8 +94,13 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         <KpiCard
           icon={<Wallet className="size-4 text-primary" aria-hidden />}
           label="Balance disponible"
-          value={formatAmount(balanceMajor, currency)}
-          tone={balanceMajor >= 0 ? 'positive' : 'negative'}
+          value={formatAmount(assetBalanceMajor, currency)}
+          tone={assetBalanceMajor >= 0 ? 'positive' : 'negative'}
+          hint={
+            liabilityBalanceMajor > 0
+              ? `Deuda en tarjetas ${formatAmount(liabilityBalanceMajor, currency)} (no incluida)`
+              : 'Solo cuentas en efectivo, débito y ahorros'
+          }
         />
         <KpiCard
           icon={<PiggyBank className="size-4 text-[color:var(--info)]" aria-hidden />}

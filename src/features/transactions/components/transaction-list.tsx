@@ -128,9 +128,10 @@ export function TransactionList({ items }: { items: TxListItem[] }) {
 function TxRow({ tx, onDelete }: { tx: TxListItem; onDelete: () => void }) {
   const expense = isExpenseKind(tx.kind);
   const income = isIncomeKind(tx.kind);
-  const transfer = tx.kind === 'transfer';
+  const transfer = tx.kind === 'transfer' || tx.kind === 'credit_card_payment';
   const isVirtual = tx.id.startsWith('virtual:');
   const amountMajor = Number(tx.amountMinor) / 100;
+  const displayAmount = expense ? -amountMajor : amountMajor;
   const Icon = transfer ? ArrowLeftRight : income ? ArrowUpRight : ArrowDownLeft;
 
   return (
@@ -175,8 +176,8 @@ function TxRow({ tx, onDelete }: { tx: TxListItem; onDelete: () => void }) {
             income ? 'text-amount-positive' : expense ? 'text-amount-negative' : 'text-foreground'
           }`}
         >
-          {formatAmount(amountMajor, tx.currency as CurrencyCode, {
-            signDisplay: income ? 'always' : 'auto',
+          {formatAmount(displayAmount, tx.currency as CurrencyCode, {
+            signDisplay: income || expense ? 'always' : 'auto',
           })}
         </span>
         {isVirtual ? null : (

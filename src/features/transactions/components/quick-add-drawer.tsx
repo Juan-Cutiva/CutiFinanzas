@@ -17,6 +17,8 @@ interface AccountOption {
   name: string;
   currency: string;
   type: string;
+  balanceMinor: string;
+  creditLimitMinor: string | null;
 }
 
 interface CategoryOption {
@@ -28,6 +30,7 @@ interface DebtOption {
   id: string;
   name: string;
   currency: string;
+  currentBalanceMinor: string;
 }
 
 interface SavingsOption {

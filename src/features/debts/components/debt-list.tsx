@@ -1,6 +1,7 @@
 'use client';
 
 import { Trash2 } from 'lucide-react';
+import Link from 'next/link';
 import { useAction } from 'next-safe-action/hooks';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -55,10 +56,14 @@ export function DebtList({ items }: { items: DebtItem[] }) {
           const progress = debtProgress(initial, balance);
 
           return (
-            <Card key={d.id}>
-              <CardContent className="space-y-3 p-5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
+            <Card key={d.id} className="transition-colors hover:border-primary/40">
+              <CardContent className="space-y-3 p-0">
+                <div className="flex items-start justify-between gap-3 p-5 pb-0">
+                  <Link
+                    href={`/deudas/${d.id}`}
+                    className="min-w-0 flex-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-md"
+                    aria-label={`Ver detalle de ${d.name}`}
+                  >
                     <h3 className="text-sm font-semibold">{d.name}</h3>
                     <p className="font-mono tabular-nums text-2xl font-semibold tracking-tight">
                       {formatAmount(balance, d.currency as CurrencyCode)}
@@ -66,7 +71,7 @@ export function DebtList({ items }: { items: DebtItem[] }) {
                     <p className="text-xs text-muted-foreground">
                       de {formatAmount(initial, d.currency as CurrencyCode)} iniciales
                     </p>
-                  </div>
+                  </Link>
                   <div className="flex items-center gap-2">
                     {monthsLeft !== null && monthsLeft > 0 ? (
                       <Badge variant="secondary">{monthsLeft} meses restantes</Badge>
@@ -85,7 +90,7 @@ export function DebtList({ items }: { items: DebtItem[] }) {
                     </Button>
                   </div>
                 </div>
-                <div>
+                <div className="px-5 pb-5">
                   <Progress value={Math.round(progress * 100)} />
                   <p className="mt-1 text-xs text-muted-foreground">
                     {Math.round(progress * 100)}% pagado · cuota{' '}

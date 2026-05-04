@@ -1,6 +1,7 @@
 'use client';
 
 import { Trash2, Wallet } from 'lucide-react';
+import Link from 'next/link';
 import { useAction } from 'next-safe-action/hooks';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -48,9 +49,16 @@ export function AccountList({ accounts }: { accounts: AccountWithBalance[] }) {
           const balance = Number(acc.balanceMinor) / 100;
           const positive = balance >= 0;
           return (
-            <Card key={acc.id} className="overflow-hidden">
-              <CardContent className="flex items-start justify-between gap-3 p-5">
-                <div className="flex min-w-0 items-start gap-3">
+            <Card
+              key={acc.id}
+              className="overflow-hidden transition-colors hover:border-primary/40"
+            >
+              <CardContent className="flex items-start justify-between gap-3 p-0">
+                <Link
+                  href={`/cuentas/${acc.id}`}
+                  className="flex min-w-0 flex-1 items-start gap-3 p-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-l-md"
+                  aria-label={`Ver detalle de ${acc.name}`}
+                >
                   <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
                     <Wallet className="size-5" aria-hidden />
                   </div>
@@ -76,16 +84,18 @@ export function AccountList({ accounts }: { accounts: AccountWithBalance[] }) {
                       {formatAmount(balance, acc.currency as CurrencyCode)}
                     </p>
                   </div>
+                </Link>
+                <div className="p-3">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    aria-label={`Archivar cuenta ${acc.name}`}
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => setPendingDelete(acc)}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
                 </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  aria-label={`Archivar cuenta ${acc.name}`}
-                  className="text-muted-foreground hover:text-destructive"
-                  onClick={() => setPendingDelete(acc)}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
               </CardContent>
             </Card>
           );

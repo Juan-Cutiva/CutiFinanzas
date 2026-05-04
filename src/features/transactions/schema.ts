@@ -6,18 +6,22 @@ const TX_KINDS = [
   'expense_fixed',
   'expense_variable',
   'transfer',
+  'credit_card_payment',
   'debt_payment',
   'savings_contribution',
+  'refund',
 ] as const;
 
 export const TX_KIND_LABELS: Record<(typeof TX_KINDS)[number], string> = {
-  income_fixed: 'Ingreso fijo (salario, renta...)',
-  income_variable: 'Ingreso variable (extra, bonificación...)',
-  expense_fixed: 'Gasto fijo (suscripciones, arriendo...)',
-  expense_variable: 'Gasto variable (mercado, gasolina...)',
+  income_fixed: 'Ingreso fijo (salario, renta…)',
+  income_variable: 'Ingreso variable (extra, bonificación…)',
+  expense_fixed: 'Gasto fijo (suscripciones, arriendo…)',
+  expense_variable: 'Gasto variable (mercado, gasolina…)',
   transfer: 'Transferencia entre cuentas',
-  debt_payment: 'Pago de deuda',
+  credit_card_payment: 'Pago de tarjeta de crédito',
+  debt_payment: 'Pago de deuda (préstamo, financiación)',
   savings_contribution: 'Aporte a meta de ahorro',
+  refund: 'Devolución / reembolso',
 };
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)');
@@ -43,6 +47,13 @@ export const transactionInputSchema = z
       ctx.addIssue({
         code: 'custom',
         message: 'Las transferencias requieren cuenta destino',
+        path: ['transferAccountId'],
+      });
+    }
+    if (data.kind === 'credit_card_payment' && !data.transferAccountId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Selecciona la tarjeta a la que estás pagando',
         path: ['transferAccountId'],
       });
     }
