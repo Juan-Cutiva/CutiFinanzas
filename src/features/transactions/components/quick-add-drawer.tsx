@@ -74,7 +74,7 @@ export function QuickAddDrawer({
             <DrawerTitle>Nuevo movimiento</DrawerTitle>
             <DrawerDescription>Registra un ingreso, gasto, transferencia o pago.</DrawerDescription>
           </DrawerHeader>
-          <div className="px-4 pb-6">
+          <div className="px-4 pb-6 pt-2">
             <TransactionForm
               accounts={accounts}
               categories={categories}

@@ -13,7 +13,7 @@ export default function AppLayout({ children }: { children: ReactNode }) {
       </Suspense>
       <div className="flex min-w-0 flex-1 flex-col">
         <Header />
-        <main className="flex-1 px-4 pb-24 pt-4 md:px-8 md:pb-8">{children}</main>
+        <main className="flex-1 px-4 pb-32 pt-4 md:px-8 md:pb-8">{children}</main>
         <Suspense fallback={null}>
           <BottomNav />
         </Suspense>

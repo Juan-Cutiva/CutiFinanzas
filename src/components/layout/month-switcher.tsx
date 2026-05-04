@@ -92,7 +92,7 @@ export function MonthSwitcher() {
         size="icon"
         variant="ghost"
         aria-label="Mes anterior"
-        className="size-8 shrink-0"
+        className="size-10 shrink-0 sm:size-9"
         onClick={() => shift(-1)}
       >
         <ChevronLeft className="size-4" />
@@ -103,7 +103,7 @@ export function MonthSwitcher() {
           <Button
             size="sm"
             variant="ghost"
-            className="h-8 gap-1.5 px-2 text-sm font-medium tabular-nums sm:hidden"
+            className="h-10 gap-1.5 px-2.5 text-sm font-medium tabular-nums sm:hidden"
             aria-label="Cambiar mes"
           >
             <Calendar className="size-4 text-muted-foreground" aria-hidden />
@@ -204,7 +204,7 @@ export function MonthSwitcher() {
         size="icon"
         variant="ghost"
         aria-label="Mes siguiente"
-        className="size-8 shrink-0"
+        className="size-10 shrink-0 sm:size-9"
         onClick={() => shift(1)}
       >
         <ChevronRight className="size-4" />

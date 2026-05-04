@@ -246,6 +246,78 @@ export async function listIncomeByMonth(userId: UserId, year: number, month: num
   );
 }
 
+const PAGE_EXPENSE_KINDS = ['expense_fixed', 'expense_variable'] as const;
+
+export async function listExpenseByMonth(userId: UserId, year: number, month: number) {
+  const { from, to } = monthRange(year, month);
+  const [real, virtuals] = await Promise.all([
+    db.query.transactions.findMany({
+      where: and(
+        eq(transactions.userId, userId),
+        between(transactions.occurredAt, from, to),
+        inArray(transactions.kind, [...PAGE_EXPENSE_KINDS]),
+      ),
+      with: { account: true, transferAccount: true, category: true },
+      orderBy: [desc(transactions.occurredAt), desc(transactions.createdAt)],
+    }),
+    virtualOccurrencesForRange(userId, from, to),
+  ]);
+
+  const expenseVirtuals = virtuals.filter((v) =>
+    (PAGE_EXPENSE_KINDS as readonly string[]).includes(v.kind),
+  );
+  if (expenseVirtuals.length === 0) return real;
+
+  const accountIds = [...new Set(expenseVirtuals.map((v) => v.accountId))];
+  const categoryIds = [
+    ...new Set(expenseVirtuals.map((v) => v.categoryId).filter(Boolean) as string[]),
+  ];
+  const [accountsList, categoriesList] = await Promise.all([
+    accountIds.length > 0
+      ? db.query.accounts.findMany({ where: (a, { inArray }) => inArray(a.id, accountIds) })
+      : Promise.resolve([]),
+    categoryIds.length > 0
+      ? db.query.categories.findMany({ where: (c, { inArray }) => inArray(c.id, categoryIds) })
+      : Promise.resolve([]),
+  ]);
+  const accountMap = new Map(accountsList.map((a) => [a.id, a]));
+  const categoryMap = new Map(categoriesList.map((c) => [c.id, c]));
+
+  type Real = (typeof real)[number];
+  const virtualEntries: Real[] = expenseVirtuals.map((v) => ({
+    id: `virtual:${v.ruleId}:${v.occurredAt}`,
+    userId,
+    accountId: v.accountId,
+    transferAccountId: null,
+    categoryId: v.categoryId,
+    debtId: null,
+    savingsGoalId: null,
+    kind: v.kind as Real['kind'],
+    amountMinor: v.amountMinor,
+    currency: v.currency,
+    fxRate: null,
+    fxAmountMinor: null,
+    fxCurrency: null,
+    occurredAt: v.occurredAt,
+    description: v.description,
+    notes: v.notes,
+    isPaid: false,
+    isRecurring: true,
+    recurringRuleId: v.ruleId,
+    quincena: Number.parseInt(v.occurredAt.slice(8, 10), 10) <= 15 ? 1 : 2,
+    receiptUrl: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    account: accountMap.get(v.accountId) ?? null,
+    transferAccount: null,
+    category: v.categoryId ? (categoryMap.get(v.categoryId) ?? null) : null,
+  })) as unknown as Real[];
+
+  return [...real, ...virtualEntries].sort((a, b) =>
+    a.occurredAt < b.occurredAt ? 1 : a.occurredAt > b.occurredAt ? -1 : 0,
+  );
+}
+
 export async function totalsByMonth(userId: UserId, year: number, month: number) {
   const { from, to } = monthRange(year, month);
   const [rows, virtuals] = await Promise.all([

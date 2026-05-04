@@ -50,7 +50,7 @@ export function CategoryList({ items }: { items: CategoryItem[] }) {
               size="icon"
               variant="ghost"
               aria-label={`Archivar ${c.name}`}
-              className="size-7 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+              className="size-8 shrink-0 transition-opacity md:size-7 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
               onClick={() => setPending(c)}
             >
               <Trash2 className="size-3.5 text-muted-foreground" />

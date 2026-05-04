@@ -15,7 +15,7 @@ export interface BudgetWithSpent {
 
 export function BudgetList({ items }: { items: BudgetWithSpent[] }) {
   return (
-    <div className="grid gap-3">
+    <div className="grid gap-3 sm:grid-cols-2">
       {items.map((b) => {
         const planned = Number(b.amountMinor) / 100;
         const spent = b.spentMinor / 100;

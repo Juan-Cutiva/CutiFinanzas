@@ -118,7 +118,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
               Cálculo según tu frecuencia de pago configurada en Ajustes.
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2">
+          <CardContent className="grid gap-3 sm:grid-cols-2 ">
             {periods.map((p, i) => {
               const t = periodTotals[i];
               if (!t) return null;
@@ -271,13 +271,14 @@ function KpiCard({
       </CardHeader>
       <CardContent className="p-5 pt-0">
         <p
-          className={`font-mono tabular-nums text-2xl font-semibold tracking-tight ${
+          className={`truncate font-mono tabular-nums text-2xl font-semibold tracking-tight ${
             tone === 'positive'
               ? 'text-amount-positive'
               : tone === 'negative'
                 ? 'text-amount-negative'
                 : ''
           }`}
+          title={value}
         >
           {value}
         </p>

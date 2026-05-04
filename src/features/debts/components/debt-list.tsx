@@ -44,7 +44,7 @@ export function DebtList({ items }: { items: DebtItem[] }) {
 
   return (
     <>
-      <div className="grid gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
         {items.map((d) => {
           const initial = Number(d.initialAmountMinor) / 100;
           const balance = Number(d.currentBalanceMinor) / 100;
@@ -72,9 +72,9 @@ export function DebtList({ items }: { items: DebtItem[] }) {
                       de {formatAmount(initial, d.currency as CurrencyCode)} iniciales
                     </p>
                   </Link>
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                     {monthsLeft !== null && monthsLeft > 0 ? (
-                      <Badge variant="secondary">{monthsLeft} meses restantes</Badge>
+                      <Badge variant="secondary">{monthsLeft} meses</Badge>
                     ) : monthsLeft === 0 ? (
                       <Badge variant="success">Pagada</Badge>
                     ) : (

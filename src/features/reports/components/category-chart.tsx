@@ -1,6 +1,15 @@
 'use client';
 
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { formatAmount } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 
@@ -37,7 +46,7 @@ export function CategoryChart({ data, currency }: Props) {
         <YAxis
           dataKey="name"
           type="category"
-          width={110}
+          width={90}
           stroke="var(--muted-foreground)"
           fontSize={11}
         />
@@ -53,7 +62,7 @@ export function CategoryChart({ data, currency }: Props) {
         />
         <Bar dataKey="value" radius={[0, 4, 4, 0]}>
           {data.map((entry) => (
-            <Bar key={entry.name} dataKey="value" fill={entry.color} />
+            <Cell key={entry.name} fill={entry.color} />
           ))}
         </Bar>
       </BarChart>

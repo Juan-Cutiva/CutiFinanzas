@@ -44,7 +44,7 @@ export function AccountList({ accounts }: { accounts: AccountWithBalance[] }) {
 
   return (
     <>
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {accounts.map((acc) => {
           const balance = Number(acc.balanceMinor) / 100;
           const positive = balance >= 0;

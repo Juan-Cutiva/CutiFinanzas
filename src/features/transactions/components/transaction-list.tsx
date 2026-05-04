@@ -187,7 +187,7 @@ function TxRow({ tx, onDelete }: { tx: TxListItem; onDelete: () => void }) {
             size="icon"
             variant="ghost"
             aria-label="Eliminar movimiento"
-            className="size-8 opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100"
+            className="size-9 transition-opacity md:size-8 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
             onClick={onDelete}
           >
             <Trash2 className="size-4 text-muted-foreground" />

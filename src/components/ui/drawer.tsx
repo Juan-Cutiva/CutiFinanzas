@@ -37,14 +37,14 @@ export const DrawerContent = React.forwardRef<
     <VaulDrawer.Content
       ref={ref}
       className={cn(
-        'fixed inset-x-0 bottom-0 z-50 mt-24 flex h-auto flex-col rounded-t-3xl border bg-card',
+        'fixed inset-x-0 bottom-0 z-50 mt-24 flex max-h-[90dvh] flex-col rounded-t-3xl border bg-card',
         'pb-[env(safe-area-inset-bottom)]',
         className,
       )}
       {...props}
     >
-      <div className="mx-auto mt-2 h-1.5 w-12 rounded-full bg-muted-foreground/30" />
-      {children}
+      <div className="mx-auto mt-2 h-1.5 w-12 shrink-0 rounded-full bg-muted-foreground/30" />
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">{children}</div>
     </VaulDrawer.Content>
   </DrawerPortal>
 ));
