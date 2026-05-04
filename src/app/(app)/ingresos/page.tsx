@@ -5,7 +5,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { getOrCreateUser } from '@/db/queries/users';
 import { listCategoriesByUser } from '@/features/categories/queries';
 import { TransactionList } from '@/features/transactions/components/transaction-list';
-import { listIncomeByMonth, totalsByMonth } from '@/features/transactions/queries';
+import { listIncomeByMonth } from '@/features/transactions/queries';
 import { dayjs, formatAmount } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 
@@ -26,15 +26,19 @@ export default async function IngresosPage({ searchParams }: PageProps) {
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
   const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
 
-  const [items, totals, categories] = await Promise.all([
+  const [items, categories] = await Promise.all([
     listIncomeByMonth(userId, year, month),
-    totalsByMonth(userId, year, month),
     listCategoriesByUser(userId),
   ]);
 
   const recurring = items.filter((t) => t.isRecurring || t.id.startsWith('virtual:'));
   const confirmedCount = recurring.filter((t) => t.isPaid).length;
   const recurringTotal = recurring.length;
+  const fijosMinor = recurring.reduce((acc, t) => acc + Number(t.amountMinor), 0);
+  const variablesMinor = items
+    .filter((t) => !t.isRecurring && !t.id.startsWith('virtual:'))
+    .reduce((acc, t) => acc + Number(t.amountMinor), 0);
+  const totalMinor = fijosMinor + variablesMinor;
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
@@ -58,12 +62,9 @@ export default async function IngresosPage({ searchParams }: PageProps) {
       </header>
 
       <section className="grid gap-3 sm:grid-cols-3">
-        <SummaryCard label="Total" value={formatAmount(totals.incomeMinor / 100, currency)} />
-        <SummaryCard label="Fijos" value={formatAmount(totals.incomeFixedMinor / 100, currency)} />
-        <SummaryCard
-          label="Variables"
-          value={formatAmount(totals.incomeVariableMinor / 100, currency)}
-        />
+        <SummaryCard label="Total" value={formatAmount(totalMinor / 100, currency)} />
+        <SummaryCard label="Fijos" value={formatAmount(fijosMinor / 100, currency)} />
+        <SummaryCard label="Variables" value={formatAmount(variablesMinor / 100, currency)} />
       </section>
 
       {items.length === 0 ? (

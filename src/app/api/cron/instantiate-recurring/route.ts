@@ -2,7 +2,7 @@ import dayjs from 'dayjs';
 import { and, eq, lte, sql } from 'drizzle-orm';
 import { type NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
-import { recurringRules, transactions } from '@/db/schema';
+import { debts, recurringRules, savingsGoals, transactions } from '@/db/schema';
 import { env } from '@/env';
 import { getQuincenaFromIsoDate } from '@/features/transactions/domain';
 
@@ -53,6 +53,29 @@ export async function GET(req: NextRequest) {
         recurringRuleId: rule.id,
         quincena: getQuincenaFromIsoDate(cursor),
       });
+
+      if (rule.kind === 'debt_payment' && rule.debtId) {
+        await db
+          .update(debts)
+          .set({
+            currentBalanceMinor: sql`GREATEST(0::bigint, ${debts.currentBalanceMinor} - ${(rule.amountMinor as bigint).toString()}::bigint)`,
+            paidInstallments: sql`${debts.paidInstallments} + 1`,
+            updatedAt: sql`now()`,
+          })
+          .where(and(eq(debts.userId, rule.userId), eq(debts.id, rule.debtId)));
+      }
+      if (rule.kind === 'savings_contribution' && rule.savingsGoalId) {
+        await db
+          .update(savingsGoals)
+          .set({
+            currentAmountMinor: sql`${savingsGoals.currentAmountMinor} + ${(rule.amountMinor as bigint).toString()}::bigint`,
+            updatedAt: sql`now()`,
+          })
+          .where(
+            and(eq(savingsGoals.userId, rule.userId), eq(savingsGoals.id, rule.savingsGoalId)),
+          );
+      }
+
       created++;
       cursor = nextOccurrence(cursor, rule.dayOfMonth);
     }

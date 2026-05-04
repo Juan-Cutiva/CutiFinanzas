@@ -43,7 +43,7 @@ export interface TxListItem {
   category: { name: string; color: string; icon: string } | null;
 }
 
-const NON_EDITABLE_KINDS = new Set(['transfer', 'debt_payment', 'savings_contribution']);
+const NON_EDITABLE_KINDS = new Set(['transfer', 'savings_contribution']);
 
 function groupByDay(items: TxListItem[]): Record<string, TxListItem[]> {
   const groups: Record<string, TxListItem[]> = {};

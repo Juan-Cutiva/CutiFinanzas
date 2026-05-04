@@ -19,6 +19,38 @@ import type {
 
 type RuleRow = typeof recurringRules.$inferSelect;
 
+/**
+ * Ajusta el saldo y cuotas pagadas de una deuda. deltaMinor positivo
+ * AUMENTA la deuda; negativo la reduce. installmentDelta es +1 cuando
+ * se paga una cuota, -1 cuando se revierte un pago.
+ */
+async function adjustDebtBalance(
+  userId: UserId,
+  debtId: string,
+  deltaMinor: bigint,
+  installmentDelta = 0,
+) {
+  await db
+    .update(debts)
+    .set({
+      currentBalanceMinor: sql`GREATEST(0::bigint, ${debts.currentBalanceMinor} + ${deltaMinor.toString()}::bigint)`,
+      paidInstallments: sql`GREATEST(0, ${debts.paidInstallments} + ${installmentDelta})`,
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(debts.userId, userId), eq(debts.id, debtId)));
+}
+
+/** Ajusta el acumulado de una meta de ahorro. deltaMinor positivo aporta. */
+async function adjustSavingsGoal(userId: UserId, goalId: string, deltaMinor: bigint) {
+  await db
+    .update(savingsGoals)
+    .set({
+      currentAmountMinor: sql`GREATEST(0::bigint, ${savingsGoals.currentAmountMinor} + ${deltaMinor.toString()}::bigint)`,
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(savingsGoals.userId, userId), eq(savingsGoals.id, goalId)));
+}
+
 export async function createTransaction(userId: UserId, input: TransactionInput) {
   const account = await db.query.accounts.findFirst({
     where: and(eq(accounts.userId, userId), eq(accounts.id, input.accountId)),
@@ -193,24 +225,11 @@ export async function createTransaction(userId: UserId, input: TransactionInput)
   if (!row) throw new Error('No se pudo registrar la transacción');
 
   if (input.kind === 'debt_payment' && input.debtId) {
-    await db
-      .update(debts)
-      .set({
-        currentBalanceMinor: sql`GREATEST(0::bigint, ${debts.currentBalanceMinor} - ${amountMinor.toString()}::bigint)`,
-        paidInstallments: sql`${debts.paidInstallments} + 1`,
-        updatedAt: sql`now()`,
-      })
-      .where(and(eq(debts.userId, userId), eq(debts.id, input.debtId)));
+    await adjustDebtBalance(userId, input.debtId, -amountMinor, 1);
   }
 
   if (input.kind === 'savings_contribution' && input.savingsGoalId) {
-    await db
-      .update(savingsGoals)
-      .set({
-        currentAmountMinor: sql`${savingsGoals.currentAmountMinor} + ${amountMinor.toString()}::bigint`,
-        updatedAt: sql`now()`,
-      })
-      .where(and(eq(savingsGoals.userId, userId), eq(savingsGoals.id, input.savingsGoalId)));
+    await adjustSavingsGoal(userId, input.savingsGoalId, amountMinor);
   }
 
   return row;
@@ -224,8 +243,10 @@ export async function updateTransaction(userId: UserId, input: UpdateTransaction
   if (!existing) throw new NotFoundError('Transacción');
 
   const patch: Record<string, unknown> = { ...rest, updatedAt: sql`now()` };
+  let newAmount: bigint | undefined;
   if (amount !== undefined) {
-    patch.amountMinor = amountMajorToMinor(amount, existing.currency as CurrencyCode);
+    newAmount = amountMajorToMinor(amount, existing.currency as CurrencyCode);
+    patch.amountMinor = newAmount;
   }
   const [row] = await db
     .update(transactions)
@@ -233,6 +254,19 @@ export async function updateTransaction(userId: UserId, input: UpdateTransaction
     .where(and(eq(transactions.userId, userId), eq(transactions.id, id)))
     .returning();
   if (!row) throw new NotFoundError('Transacción');
+
+  if (newAmount !== undefined) {
+    const oldAmount = BigInt(existing.amountMinor);
+    const delta = newAmount - oldAmount;
+    if (delta !== 0n) {
+      if (existing.kind === 'debt_payment' && existing.debtId) {
+        await adjustDebtBalance(userId, existing.debtId, -delta);
+      }
+      if (existing.kind === 'savings_contribution' && existing.savingsGoalId) {
+        await adjustSavingsGoal(userId, existing.savingsGoalId, delta);
+      }
+    }
+  }
   return row;
 }
 
@@ -258,8 +292,12 @@ async function upsertOccurrence(
   });
 
   if (existing) {
+    const oldAmount = BigInt(existing.amountMinor);
+    const newAmount = values.amountMinor;
+    const delta = newAmount - oldAmount;
+
     const patch: Record<string, unknown> = {
-      amountMinor: values.amountMinor,
+      amountMinor: newAmount,
       updatedAt: sql`now()`,
     };
     if (values.description !== undefined) {
@@ -272,6 +310,15 @@ async function upsertOccurrence(
       .set(patch)
       .where(and(eq(transactions.userId, userId), eq(transactions.id, existing.id)))
       .returning();
+
+    if (delta !== 0n) {
+      if (rule.kind === 'debt_payment' && rule.debtId) {
+        await adjustDebtBalance(userId, rule.debtId, -delta);
+      }
+      if (rule.kind === 'savings_contribution' && rule.savingsGoalId) {
+        await adjustSavingsGoal(userId, rule.savingsGoalId, delta);
+      }
+    }
     return row;
   }
 
@@ -280,7 +327,10 @@ async function upsertOccurrence(
     .values({
       userId,
       accountId: rule.accountId,
+      transferAccountId: rule.transferAccountId ?? null,
       categoryId: values.categoryId ?? rule.categoryId,
+      debtId: rule.debtId ?? null,
+      savingsGoalId: rule.savingsGoalId ?? null,
       kind: rule.kind,
       amountMinor: values.amountMinor,
       currency: rule.currency,
@@ -293,6 +343,14 @@ async function upsertOccurrence(
       recurringRuleId: rule.id,
     })
     .returning();
+
+  if (rule.kind === 'debt_payment' && rule.debtId) {
+    await adjustDebtBalance(userId, rule.debtId, -values.amountMinor, 1);
+  }
+  if (rule.kind === 'savings_contribution' && rule.savingsGoalId) {
+    await adjustSavingsGoal(userId, rule.savingsGoalId, values.amountMinor);
+  }
+
   return row;
 }
 
@@ -327,7 +385,10 @@ async function materializePastOccurrences(userId: UserId, rule: RuleRow, beforeI
       await db.insert(transactions).values({
         userId,
         accountId: rule.accountId,
+        transferAccountId: rule.transferAccountId ?? null,
         categoryId: rule.categoryId,
+        debtId: rule.debtId ?? null,
+        savingsGoalId: rule.savingsGoalId ?? null,
         kind: rule.kind,
         amountMinor: rule.amountMinor,
         currency: rule.currency,
@@ -339,6 +400,12 @@ async function materializePastOccurrences(userId: UserId, rule: RuleRow, beforeI
         isRecurring: true,
         recurringRuleId: rule.id,
       });
+      if (rule.kind === 'debt_payment' && rule.debtId) {
+        await adjustDebtBalance(userId, rule.debtId, -(rule.amountMinor as bigint), 1);
+      }
+      if (rule.kind === 'savings_contribution' && rule.savingsGoalId) {
+        await adjustSavingsGoal(userId, rule.savingsGoalId, rule.amountMinor as bigint);
+      }
     }
 
     cursor = cursor.add(1, 'month');
@@ -448,6 +515,13 @@ export async function togglePaid(userId: UserId, input: TogglePaidInput) {
         quincena: getQuincenaFromIsoDate(occurredAt),
       })
       .returning();
+
+    if (rule.kind === 'debt_payment' && rule.debtId) {
+      await adjustDebtBalance(userId, rule.debtId, -(rule.amountMinor as bigint), 1);
+    }
+    if (rule.kind === 'savings_contribution' && rule.savingsGoalId) {
+      await adjustSavingsGoal(userId, rule.savingsGoalId, rule.amountMinor as bigint);
+    }
     return row;
   }
 
@@ -466,5 +540,12 @@ export async function deleteTransaction(userId: UserId, id: string) {
     .where(and(eq(transactions.userId, userId), eq(transactions.id, id)))
     .returning();
   if (!row) throw new NotFoundError('Transacción');
+
+  if (row.kind === 'debt_payment' && row.debtId) {
+    await adjustDebtBalance(userId, row.debtId, BigInt(row.amountMinor), -1);
+  }
+  if (row.kind === 'savings_contribution' && row.savingsGoalId) {
+    await adjustSavingsGoal(userId, row.savingsGoalId, -BigInt(row.amountMinor));
+  }
   return row;
 }
