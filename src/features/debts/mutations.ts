@@ -1,12 +1,17 @@
 import 'server-only';
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { debts } from '@/db/schema';
+import { debtEvents, debts } from '@/db/schema';
 import { NotFoundError } from '@/lib/errors';
 import type { CurrencyCode } from '@/lib/money';
 import type { UserId } from '@/types/ids';
 import { amountMajorToMinor } from '../transactions/domain';
-import type { DebtInput, RecordDebtUsageInput, UpdateDebtInput } from './schema';
+import type {
+  DebtInput,
+  RecordDebtUsageInput,
+  UpdateDebtInput,
+  UpdateDebtUsageInput,
+} from './schema';
 
 export async function createDebt(userId: UserId, input: DebtInput) {
   const currency = input.currency as CurrencyCode;
@@ -75,7 +80,7 @@ export async function updateDebt(userId: UserId, input: UpdateDebtInput) {
  * Aumenta el saldo de una deuda y su monto inicial, sin afectar cuentas
  * ni aparecer en /gastos. Pensado para registrar un "uso" adicional
  * (compra extra a cuotas, mora capitalizada, refinanciación, etc.).
- * Anota el motivo y la fecha en el campo notes para audit.
+ * Crea un debt_event para el historial visible en /deudas/[id].
  */
 export async function recordDebtUsage(userId: UserId, input: RecordDebtUsageInput) {
   const existing = await db.query.debts.findFirst({
@@ -86,21 +91,85 @@ export async function recordDebtUsage(userId: UserId, input: RecordDebtUsageInpu
   const currency = existing.currency as CurrencyCode;
   const usageMinor = amountMajorToMinor(input.amount, currency);
   const today = new Date().toISOString().slice(0, 10);
-  const auditLine = `[${today}] +${input.amount} — ${input.description}`;
-  const newNotes = existing.notes ? `${existing.notes}\n${auditLine}` : auditLine;
+
+  await db.insert(debtEvents).values({
+    userId,
+    debtId: input.id,
+    amountMinor: usageMinor,
+    currency,
+    description: input.description,
+    occurredAt: today,
+  });
 
   const [row] = await db
     .update(debts)
     .set({
       initialAmountMinor: sql`${debts.initialAmountMinor} + ${usageMinor.toString()}::bigint`,
       currentBalanceMinor: sql`${debts.currentBalanceMinor} + ${usageMinor.toString()}::bigint`,
-      notes: newNotes,
       updatedAt: sql`now()`,
     })
     .where(and(eq(debts.userId, userId), eq(debts.id, input.id)))
     .returning();
   if (!row) throw new NotFoundError('Deuda');
   return row;
+}
+
+/**
+ * Edita un debt_event existente. Calcula el delta entre el monto nuevo y
+ * el viejo, y lo aplica al saldo y monto inicial de la deuda. Si la
+ * descripción cambia, también la actualiza.
+ */
+export async function updateDebtUsage(userId: UserId, input: UpdateDebtUsageInput) {
+  const existing = await db.query.debtEvents.findFirst({
+    where: and(eq(debtEvents.userId, userId), eq(debtEvents.id, input.eventId)),
+  });
+  if (!existing) throw new NotFoundError('Aumento de saldo');
+
+  const currency = existing.currency as CurrencyCode;
+  const newAmountMinor = amountMajorToMinor(input.amount, currency);
+  const oldAmountMinor = BigInt(existing.amountMinor);
+  const delta = newAmountMinor - oldAmountMinor;
+
+  await db
+    .update(debtEvents)
+    .set({ amountMinor: newAmountMinor, description: input.description })
+    .where(and(eq(debtEvents.userId, userId), eq(debtEvents.id, input.eventId)));
+
+  if (delta !== 0n) {
+    await db
+      .update(debts)
+      .set({
+        initialAmountMinor: sql`${debts.initialAmountMinor} + ${delta.toString()}::bigint`,
+        currentBalanceMinor: sql`GREATEST(0::bigint, ${debts.currentBalanceMinor} + ${delta.toString()}::bigint)`,
+        updatedAt: sql`now()`,
+      })
+      .where(and(eq(debts.userId, userId), eq(debts.id, existing.debtId)));
+  }
+
+  return { ok: true };
+}
+
+/** Borra un debt_event y revierte el bump correspondiente al saldo y al inicial. */
+export async function deleteDebtUsage(userId: UserId, eventId: string) {
+  const existing = await db.query.debtEvents.findFirst({
+    where: and(eq(debtEvents.userId, userId), eq(debtEvents.id, eventId)),
+  });
+  if (!existing) throw new NotFoundError('Aumento de saldo');
+
+  const amountMinor = BigInt(existing.amountMinor);
+
+  await db.delete(debtEvents).where(and(eq(debtEvents.userId, userId), eq(debtEvents.id, eventId)));
+
+  await db
+    .update(debts)
+    .set({
+      initialAmountMinor: sql`${debts.initialAmountMinor} - ${amountMinor.toString()}::bigint`,
+      currentBalanceMinor: sql`GREATEST(0::bigint, ${debts.currentBalanceMinor} - ${amountMinor.toString()}::bigint)`,
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(debts.userId, userId), eq(debts.id, existing.debtId)));
+
+  return { ok: true };
 }
 
 export async function deleteDebt(userId: UserId, id: string) {

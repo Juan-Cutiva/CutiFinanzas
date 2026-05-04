@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { FileUpload } from '@/components/ui/file-upload';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MoneyInput } from '@/components/ui/money-input';
@@ -40,6 +41,7 @@ export interface EditableTx {
   description: string | null;
   notes: string | null;
   categoryId: string | null;
+  receiptUrl: string | null;
   isRecurring: boolean;
 }
 
@@ -53,11 +55,22 @@ const CATEGORY_KINDS = new Set(['expense_fixed', 'expense_variable', 'credit_car
 
 const CATEGORY_REQUIRED_KINDS = new Set(['expense_fixed', 'expense_variable']);
 
+const RECEIPT_KINDS = new Set([
+  'expense_fixed',
+  'expense_variable',
+  'credit_card_payment',
+  'debt_payment',
+  'income_fixed',
+  'income_variable',
+  'refund',
+]);
+
 export function EditTransactionDialog({ tx, categories, onClose }: Props) {
   const [amount, setAmount] = React.useState<number>(0);
   const [description, setDescription] = React.useState('');
   const [notes, setNotes] = React.useState('');
   const [categoryId, setCategoryId] = React.useState<string | null>(null);
+  const [receiptUrl, setReceiptUrl] = React.useState<string | null>(null);
   const [mode, setMode] = React.useState<'this_month' | 'forward'>('this_month');
 
   React.useEffect(() => {
@@ -66,6 +79,7 @@ export function EditTransactionDialog({ tx, categories, onClose }: Props) {
     setDescription(tx.description ?? '');
     setNotes(tx.notes ?? '');
     setCategoryId(tx.categoryId ?? null);
+    setReceiptUrl(tx.receiptUrl ?? null);
     setMode('this_month');
   }, [tx]);
 
@@ -98,6 +112,8 @@ export function EditTransactionDialog({ tx, categories, onClose }: Props) {
   const isPending = updateOnce.isPending || updateRecurring.isPending;
   const canSubmit = amount > 0 && (!categoryRequired || (categoryId !== null && categoryId !== ''));
 
+  const showReceipt = RECEIPT_KINDS.has(tx.kind) && (!tx.isRecurring || mode === 'this_month');
+
   function submit() {
     if (!tx) return;
     if (tx.isRecurring) {
@@ -107,6 +123,7 @@ export function EditTransactionDialog({ tx, categories, onClose }: Props) {
         description: description.trim() || undefined,
         notes: notes.trim() || null,
         categoryId,
+        receiptUrl: mode === 'this_month' ? receiptUrl : undefined,
         mode,
       });
     } else {
@@ -116,6 +133,7 @@ export function EditTransactionDialog({ tx, categories, onClose }: Props) {
         description: description.trim() || undefined,
         notes: notes.trim() || null,
         categoryId,
+        receiptUrl,
       });
     }
   }
@@ -189,6 +207,18 @@ export function EditTransactionDialog({ tx, categories, onClose }: Props) {
               onChange={(e) => setNotes(e.target.value)}
             />
           </div>
+
+          {showReceipt ? (
+            <div>
+              <Label>Comprobante (opcional)</Label>
+              <div className="mt-1.5">
+                <FileUpload
+                  value={receiptUrl ?? undefined}
+                  onChange={(v) => setReceiptUrl(v ?? null)}
+                />
+              </div>
+            </div>
+          ) : null}
 
           {tx.isRecurring ? (
             <fieldset className="rounded-md border border-border/60 bg-muted/30 p-3">

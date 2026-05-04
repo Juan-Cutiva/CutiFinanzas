@@ -131,6 +131,7 @@ export const updateTransactionSchema = z.object({
   notes: z.string().trim().max(2000).nullable().optional(),
   categoryId: z.string().nullable().optional(),
   isPaid: z.boolean().optional(),
+  receiptUrl: z.string().url().nullable().optional(),
 });
 export type UpdateTransactionInput = z.infer<typeof updateTransactionSchema>;
 
@@ -140,6 +141,7 @@ export const updateRecurringTransactionSchema = z.object({
   description: z.string().trim().max(200).optional(),
   notes: z.string().trim().max(2000).nullable().optional(),
   categoryId: z.string().nullable().optional(),
+  receiptUrl: z.string().url().nullable().optional(),
   mode: z.enum(['this_month', 'forward']),
 });
 export type UpdateRecurringTransactionInput = z.infer<typeof updateRecurringTransactionSchema>;

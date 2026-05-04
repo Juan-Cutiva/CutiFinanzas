@@ -43,3 +43,25 @@ export const debts = pgTable(
 
 export type DebtRow = typeof debts.$inferSelect;
 export type NewDebt = typeof debts.$inferInsert;
+
+export const debtEvents = pgTable(
+  'debt_events',
+  {
+    id: text('id').primaryKey().default(sql`gen_random_uuid()::text`),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    debtId: text('debt_id')
+      .notNull()
+      .references(() => debts.id, { onDelete: 'cascade' }),
+    amountMinor: bigint('amount_minor', { mode: 'bigint' }).notNull(),
+    currency: char('currency', { length: 3 }).notNull(),
+    description: varchar('description', { length: 200 }).notNull(),
+    occurredAt: date('occurred_at').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [index('idx_debt_events_user_debt').on(t.userId, t.debtId)],
+);
+
+export type DebtEventRow = typeof debtEvents.$inferSelect;
+export type NewDebtEvent = typeof debtEvents.$inferInsert;

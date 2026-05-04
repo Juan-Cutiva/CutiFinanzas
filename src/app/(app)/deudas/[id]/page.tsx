@@ -9,13 +9,14 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Progress } from '@/components/ui/progress';
 import { getOrCreateUser } from '@/db/queries/users';
 import { listCategoriesByUser } from '@/features/categories/queries';
+import { DebtUsagesList } from '@/features/debts/components/debt-usages-list';
 import { RecordDebtUsageButton } from '@/features/debts/components/record-debt-usage-button';
 import {
   annualToMonthlyRate,
   calculateRemainingMonths,
   debtProgress,
 } from '@/features/debts/domain';
-import { getDebtById, getDebtPayments } from '@/features/debts/queries';
+import { getDebtById, getDebtPayments, getDebtUsages } from '@/features/debts/queries';
 import { TransactionList } from '@/features/transactions/components/transaction-list';
 import { formatAmount, formatDate } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
@@ -33,8 +34,9 @@ export default async function DebtDetailPage({ params }: Props) {
   const debt = await getDebtById(user.id as never, id);
   if (!debt) notFound();
 
-  const [payments, categories] = await Promise.all([
+  const [payments, usages, categories] = await Promise.all([
     getDebtPayments(user.id as never, debt.id),
+    getDebtUsages(user.id as never, debt.id),
     listCategoriesByUser(user.id as never),
   ]);
 
@@ -124,6 +126,15 @@ export default async function DebtDetailPage({ params }: Props) {
           </div>
         </CardContent>
       </Card>
+
+      {usages.length > 0 ? (
+        <section className="space-y-3">
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            Aumentos de saldo ({usages.length})
+          </h3>
+          <DebtUsagesList items={usages as never} />
+        </section>
+      ) : null}
 
       <section className="space-y-3">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">

@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Pencil, Trash2 } from 'lucide-react';
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, Eye, Pencil, Trash2 } from 'lucide-react';
 import { useAction } from 'next-safe-action/hooks';
 import { useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -25,6 +25,7 @@ import {
   type EditableTx,
   EditTransactionDialog,
 } from './edit-transaction-dialog';
+import { type ViewableTx, ViewTransactionDialog } from './view-transaction-dialog';
 
 export interface TxListItem {
   id: string;
@@ -35,12 +36,22 @@ export interface TxListItem {
   description: string | null;
   notes: string | null;
   categoryId: string | null;
+  receiptUrl: string | null;
   isRecurring: boolean;
   isPaid: boolean;
   recurringRuleId: string | null;
-  account: { name: string } | null;
+  account: { name: string; type: string } | null;
   transferAccount: { name: string } | null;
   category: { name: string; color: string; icon: string } | null;
+}
+
+const PURCHASE_KINDS_LIST = new Set(['expense_fixed', 'expense_variable']);
+
+function isCreditPurchase(tx: TxListItem): boolean {
+  return (
+    PURCHASE_KINDS_LIST.has(tx.kind) &&
+    (tx.account?.type === 'credit_card' || tx.account?.type === 'loan')
+  );
 }
 
 const NON_EDITABLE_KINDS = new Set(['transfer', 'savings_contribution']);
@@ -63,6 +74,7 @@ interface Props {
 export function TransactionList({ items, categories = [] }: Props) {
   const [pendingDelete, setPendingDelete] = useState<TxListItem | null>(null);
   const [editing, setEditing] = useState<EditableTx | null>(null);
+  const [viewing, setViewing] = useState<ViewableTx | null>(null);
 
   const { execute, isPending } = useAction(deleteTransactionAction, {
     onSuccess: () => {
@@ -89,7 +101,25 @@ export function TransactionList({ items, categories = [] }: Props) {
       description: tx.description,
       notes: tx.notes,
       categoryId: tx.categoryId,
+      receiptUrl: tx.receiptUrl,
       isRecurring: tx.isRecurring || tx.id.startsWith('virtual:'),
+    });
+  }
+
+  function handleView(tx: TxListItem) {
+    setViewing({
+      id: tx.id,
+      kind: tx.kind,
+      amountMinor: tx.amountMinor,
+      currency: tx.currency,
+      occurredAt: tx.occurredAt,
+      description: tx.description,
+      notes: tx.notes,
+      receiptUrl: tx.receiptUrl,
+      isRecurring: tx.isRecurring,
+      account: tx.account,
+      transferAccount: tx.transferAccount,
+      category: tx.category,
     });
   }
 
@@ -99,6 +129,7 @@ export function TransactionList({ items, categories = [] }: Props) {
         {days.map((day) => {
           const dayItems = grouped[day] ?? [];
           const dayNet = dayItems.reduce((acc, t) => {
+            if (isCreditPurchase(t)) return acc;
             const value = Number(t.amountMinor);
             return acc + (isIncomeKind(t.kind) ? value : -value);
           }, 0);
@@ -129,6 +160,7 @@ export function TransactionList({ items, categories = [] }: Props) {
                     <TxRow
                       key={tx.id}
                       tx={tx}
+                      onView={() => handleView(tx)}
                       onEdit={() => handleEdit(tx)}
                       onDelete={() => setPendingDelete(tx)}
                     />
@@ -168,22 +200,26 @@ export function TransactionList({ items, categories = [] }: Props) {
         categories={categories}
         onClose={() => setEditing(null)}
       />
+
+      <ViewTransactionDialog tx={viewing} onClose={() => setViewing(null)} />
     </>
   );
 }
 
 interface RowProps {
   tx: TxListItem;
+  onView: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }
 
-function TxRow({ tx, onEdit, onDelete }: RowProps) {
+function TxRow({ tx, onView, onEdit, onDelete }: RowProps) {
   const expense = isExpenseKind(tx.kind);
   const income = isIncomeKind(tx.kind);
   const transfer = tx.kind === 'transfer' || tx.kind === 'credit_card_payment';
   const isVirtual = tx.id.startsWith('virtual:');
   const isRecurringRow = tx.isRecurring || isVirtual;
+  const creditPurchase = isCreditPurchase(tx);
   const amountMajor = Number(tx.amountMinor) / 100;
   const displayAmount = expense ? -amountMajor : amountMajor;
   const Icon = transfer ? ArrowLeftRight : income ? ArrowUpRight : ArrowDownLeft;
@@ -233,6 +269,14 @@ function TxRow({ tx, onEdit, onDelete }: RowProps) {
               Programado
             </span>
           ) : null}
+          {creditPurchase ? (
+            <span
+              className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
+              title="Compra con tarjeta de crédito — no cuenta en balance ni totales"
+            >
+              No cuenta
+            </span>
+          ) : null}
         </p>
         <p className="truncate text-xs text-muted-foreground">
           {tx.account?.name ?? '—'}
@@ -243,13 +287,28 @@ function TxRow({ tx, onEdit, onDelete }: RowProps) {
       <div className="flex items-center gap-1">
         <span
           className={`font-mono tabular-nums text-sm font-semibold ${
-            income ? 'text-amount-positive' : expense ? 'text-amount-negative' : 'text-foreground'
+            creditPurchase
+              ? 'text-muted-foreground line-through decoration-muted-foreground/40'
+              : income
+                ? 'text-amount-positive'
+                : expense
+                  ? 'text-amount-negative'
+                  : 'text-foreground'
           }`}
         >
           {formatAmount(displayAmount, tx.currency as CurrencyCode, {
             signDisplay: income || expense ? 'always' : 'auto',
           })}
         </span>
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label="Ver detalles"
+          className="size-9 transition-opacity md:size-8 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+          onClick={onView}
+        >
+          <Eye className="size-4 text-muted-foreground" />
+        </Button>
         {editable ? (
           <Button
             size="icon"

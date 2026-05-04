@@ -1,7 +1,7 @@
 import 'server-only';
-import { and, asc, eq, ne } from 'drizzle-orm';
+import { and, asc, desc, eq, ne } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { debts, transactions } from '@/db/schema';
+import { debtEvents, debts, transactions } from '@/db/schema';
 import type { UserId } from '@/types/ids';
 
 export async function listDebtsByUser(userId: UserId) {
@@ -23,4 +23,13 @@ export async function getDebtPayments(userId: UserId, debtId: string) {
     orderBy: (t, { desc }) => [desc(t.occurredAt), desc(t.createdAt)],
     limit: 200,
   });
+}
+
+export async function getDebtUsages(userId: UserId, debtId: string) {
+  return db
+    .select()
+    .from(debtEvents)
+    .where(and(eq(debtEvents.userId, userId), eq(debtEvents.debtId, debtId)))
+    .orderBy(desc(debtEvents.occurredAt), desc(debtEvents.createdAt))
+    .limit(200);
 }

@@ -2,12 +2,21 @@
 
 import { revalidateAfterDebt } from '@/lib/cache-tags';
 import { authedAction } from '@/lib/safe-action';
-import { createDebt, deleteDebt, recordDebtUsage, updateDebt } from './mutations';
+import {
+  createDebt,
+  deleteDebt,
+  deleteDebtUsage,
+  recordDebtUsage,
+  updateDebt,
+  updateDebtUsage,
+} from './mutations';
 import {
   debtInputSchema,
   deleteDebtSchema,
+  deleteDebtUsageSchema,
   recordDebtUsageSchema,
   updateDebtSchema,
+  updateDebtUsageSchema,
 } from './schema';
 
 export const createDebtAction = authedAction
@@ -33,6 +42,24 @@ export const recordDebtUsageAction = authedAction
   .inputSchema(recordDebtUsageSchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await recordDebtUsage(ctx.userId, parsedInput);
+    revalidateAfterDebt(ctx.userId);
+    return row;
+  });
+
+export const updateDebtUsageAction = authedAction
+  .metadata({ actionName: 'updateDebtUsage' })
+  .inputSchema(updateDebtUsageSchema)
+  .action(async ({ parsedInput, ctx }) => {
+    const row = await updateDebtUsage(ctx.userId, parsedInput);
+    revalidateAfterDebt(ctx.userId);
+    return row;
+  });
+
+export const deleteDebtUsageAction = authedAction
+  .metadata({ actionName: 'deleteDebtUsage' })
+  .inputSchema(deleteDebtUsageSchema)
+  .action(async ({ parsedInput, ctx }) => {
+    const row = await deleteDebtUsage(ctx.userId, parsedInput.eventId);
     revalidateAfterDebt(ctx.userId);
     return row;
   });

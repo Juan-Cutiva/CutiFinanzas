@@ -31,11 +31,22 @@ export default async function GastosPage({ searchParams }: PageProps) {
     listCategoriesByUser(userId),
   ]);
 
-  const recurring = items.filter((t) => t.isRecurring || t.id.startsWith('virtual:'));
+  // Las compras con tarjeta de crédito (expense_* en cuenta credit_card/loan)
+  // se muestran como referencia pero no entran en el balance: el gasto real
+  // ocurre cuando se paga la tarjeta (credit_card_payment).
+  function isCreditPurchase(t: (typeof items)[number]): boolean {
+    return (
+      (t.kind === 'expense_fixed' || t.kind === 'expense_variable') &&
+      (t.account?.type === 'credit_card' || t.account?.type === 'loan')
+    );
+  }
+
+  const counted = items.filter((t) => !isCreditPurchase(t));
+  const recurring = counted.filter((t) => t.isRecurring || t.id.startsWith('virtual:'));
   const confirmedCount = recurring.filter((t) => t.isPaid).length;
   const recurringTotal = recurring.length;
   const fijosMinor = recurring.reduce((acc, t) => acc + Number(t.amountMinor), 0);
-  const variablesMinor = items
+  const variablesMinor = counted
     .filter((t) => !t.isRecurring && !t.id.startsWith('virtual:'))
     .reduce((acc, t) => acc + Number(t.amountMinor), 0);
   const totalMinor = fijosMinor + variablesMinor;

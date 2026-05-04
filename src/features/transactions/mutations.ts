@@ -275,6 +275,7 @@ interface OccurrenceValues {
   description?: string;
   categoryId?: string | null;
   notes?: string | null;
+  receiptUrl?: string | null;
 }
 
 async function upsertOccurrence(
@@ -305,6 +306,7 @@ async function upsertOccurrence(
     }
     if (values.categoryId !== undefined) patch.categoryId = values.categoryId;
     if (values.notes !== undefined) patch.notes = values.notes;
+    if (values.receiptUrl !== undefined) patch.receiptUrl = values.receiptUrl;
     const [row] = await db
       .update(transactions)
       .set(patch)
@@ -337,6 +339,7 @@ async function upsertOccurrence(
       occurredAt,
       description: (values.description?.trim() || null) ?? rule.name,
       notes: values.notes ?? rule.notes,
+      receiptUrl: values.receiptUrl ?? null,
       isPaid: true,
       quincena: getQuincenaFromIsoDate(occurredAt),
       isRecurring: true,
@@ -447,6 +450,9 @@ export async function updateRecurringTransaction(
     description: input.description,
     categoryId: input.categoryId,
     notes: input.notes,
+    // El comprobante solo aplica para "solo este mes". En "forward" la regla
+    // se reusa para meses futuros donde aún no existe comprobante.
+    receiptUrl: input.mode === 'this_month' ? input.receiptUrl : undefined,
   };
 
   if (input.mode === 'this_month') {

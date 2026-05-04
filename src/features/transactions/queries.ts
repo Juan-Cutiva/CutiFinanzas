@@ -3,7 +3,7 @@ import dayjs from 'dayjs';
 import { and, between, desc, eq, inArray, lte, or, sql, sum } from 'drizzle-orm';
 import { cache } from 'react';
 import { db } from '@/db/client';
-import { recurringRules, transactions } from '@/db/schema';
+import { accounts, recurringRules, transactions } from '@/db/schema';
 import type { UserId } from '@/types/ids';
 
 const EXPENSE_KINDS = [
@@ -17,6 +17,42 @@ const EXPENSE_KINDS = [
 const INCOME_KINDS = ['income', 'income_fixed', 'income_variable'] as const;
 
 const NON_CASHFLOW_KINDS = new Set(['transfer']);
+
+const PURCHASE_KINDS = new Set(['expense_fixed', 'expense_variable']);
+const INCOME_KIND_SET = new Set(['income', 'income_fixed', 'income_variable', 'refund']);
+
+const getLiabilityAccountIds = cache(async function getLiabilityAccountIds(
+  userId: UserId,
+): Promise<Set<string>> {
+  const rows = await db
+    .select({ id: accounts.id })
+    .from(accounts)
+    .where(
+      and(
+        eq(accounts.userId, userId),
+        or(eq(accounts.type, 'credit_card'), eq(accounts.type, 'loan')),
+      ),
+    );
+  return new Set(rows.map((r) => r.id));
+});
+
+/**
+ * Determina si una transacción cuenta como flujo de caja real.
+ * - expense_* en una cuenta de crédito/préstamo: NO (estás usando cupo del
+ *   banco, no plata propia). El gasto real ocurre cuando pagas la tarjeta.
+ * - income/refund en cuenta de crédito: NO (está abonando deuda, no es
+ *   ingreso real).
+ * - transfer: NO.
+ * - resto: SÍ.
+ */
+function isCashflowRow(kind: string, accountId: string | null, liabilityIds: Set<string>): boolean {
+  if (NON_CASHFLOW_KINDS.has(kind)) return false;
+  if (!accountId) return true;
+  const isLiability = liabilityIds.has(accountId);
+  if (PURCHASE_KINDS.has(kind) && isLiability) return false;
+  if (INCOME_KIND_SET.has(kind) && isLiability) return false;
+  return true;
+}
 
 function monthRange(year: number, month: number): { from: string; to: string } {
   const from = `${year}-${String(month).padStart(2, '0')}-01`;
@@ -344,25 +380,27 @@ export async function listExpenseByMonth(userId: UserId, year: number, month: nu
 
 export async function totalsByMonth(userId: UserId, year: number, month: number) {
   const { from, to } = monthRange(year, month);
-  const [rows, virtuals] = await Promise.all([
+  const [rows, virtuals, liabilityIds] = await Promise.all([
     db
       .select({
         kind: transactions.kind,
+        accountId: transactions.accountId,
         total: sum(transactions.amountMinor).mapWith(Number),
       })
       .from(transactions)
       .where(and(eq(transactions.userId, userId), between(transactions.occurredAt, from, to)))
-      .groupBy(transactions.kind),
+      .groupBy(transactions.kind, transactions.accountId),
     virtualOccurrencesForRange(userId, from, to),
+    getLiabilityAccountIds(userId),
   ]);
 
   const map: Record<string, number> = {};
   for (const r of rows) {
-    if (NON_CASHFLOW_KINDS.has(r.kind)) continue;
-    map[r.kind] = r.total ?? 0;
+    if (!isCashflowRow(r.kind, r.accountId, liabilityIds)) continue;
+    map[r.kind] = (map[r.kind] ?? 0) + (r.total ?? 0);
   }
   for (const v of virtuals) {
-    if (NON_CASHFLOW_KINDS.has(v.kind)) continue;
+    if (!isCashflowRow(v.kind, v.accountId, liabilityIds)) continue;
     map[v.kind] = (map[v.kind] ?? 0) + Number(v.amountMinor);
   }
 
@@ -381,27 +419,29 @@ export async function totalsByMonth(userId: UserId, year: number, month: number)
 }
 
 export async function totalsForRange(userId: UserId, fromDate: string, toDate: string) {
-  const [rows, virtuals] = await Promise.all([
+  const [rows, virtuals, liabilityIds] = await Promise.all([
     db
       .select({
         kind: transactions.kind,
+        accountId: transactions.accountId,
         total: sum(transactions.amountMinor).mapWith(Number),
       })
       .from(transactions)
       .where(
         and(eq(transactions.userId, userId), between(transactions.occurredAt, fromDate, toDate)),
       )
-      .groupBy(transactions.kind),
+      .groupBy(transactions.kind, transactions.accountId),
     virtualOccurrencesForRange(userId, fromDate, toDate),
+    getLiabilityAccountIds(userId),
   ]);
 
   const map: Record<string, number> = {};
   for (const r of rows) {
-    if (NON_CASHFLOW_KINDS.has(r.kind)) continue;
-    map[r.kind] = r.total ?? 0;
+    if (!isCashflowRow(r.kind, r.accountId, liabilityIds)) continue;
+    map[r.kind] = (map[r.kind] ?? 0) + (r.total ?? 0);
   }
   for (const v of virtuals) {
-    if (NON_CASHFLOW_KINDS.has(v.kind)) continue;
+    if (!isCashflowRow(v.kind, v.accountId, liabilityIds)) continue;
     map[v.kind] = (map[v.kind] ?? 0) + Number(v.amountMinor);
   }
 
@@ -421,34 +461,42 @@ export async function totalsForRange(userId: UserId, fromDate: string, toDate: s
 }
 
 export async function totalsByMonthForYear(userId: UserId, year: number) {
-  const rows = await db
-    .select({
-      month: sql<string>`to_char(${transactions.occurredAt}::date, 'MM')`,
-      kind: transactions.kind,
-      total: sum(transactions.amountMinor).mapWith(Number),
-    })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.userId, userId),
-        sql`extract(year from ${transactions.occurredAt}::date) = ${year}`,
+  const [rows, liabilityIds] = await Promise.all([
+    db
+      .select({
+        month: sql<string>`to_char(${transactions.occurredAt}::date, 'MM')`,
+        kind: transactions.kind,
+        accountId: transactions.accountId,
+        total: sum(transactions.amountMinor).mapWith(Number),
+      })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          sql`extract(year from ${transactions.occurredAt}::date) = ${year}`,
+        ),
+      )
+      .groupBy(
+        sql`to_char(${transactions.occurredAt}::date, 'MM')`,
+        transactions.kind,
+        transactions.accountId,
       ),
-    )
-    .groupBy(sql`to_char(${transactions.occurredAt}::date, 'MM')`, transactions.kind);
+    getLiabilityAccountIds(userId),
+  ]);
 
   type Bucket = { incomeMinor: number; expenseMinor: number };
   const buckets: Record<number, Bucket> = {};
   for (let m = 1; m <= 12; m++) buckets[m] = { incomeMinor: 0, expenseMinor: 0 };
 
-  function classify(bucket: Bucket | undefined, kind: string, amount: number) {
+  function classify(
+    bucket: Bucket | undefined,
+    kind: string,
+    accountId: string | null,
+    amount: number,
+  ) {
     if (!bucket) return;
-    if (NON_CASHFLOW_KINDS.has(kind)) return;
-    if (
-      kind === 'income' ||
-      kind === 'income_fixed' ||
-      kind === 'income_variable' ||
-      kind === 'refund'
-    ) {
+    if (!isCashflowRow(kind, accountId, liabilityIds)) return;
+    if (INCOME_KIND_SET.has(kind)) {
       bucket.incomeMinor += amount;
     } else {
       bucket.expenseMinor += amount;
@@ -457,7 +505,7 @@ export async function totalsByMonthForYear(userId: UserId, year: number) {
 
   for (const r of rows) {
     const m = Number.parseInt(r.month, 10);
-    classify(buckets[m], r.kind, r.total ?? 0);
+    classify(buckets[m], r.kind, r.accountId, r.total ?? 0);
   }
 
   const yearFrom = `${year}-01-01`;
@@ -465,7 +513,7 @@ export async function totalsByMonthForYear(userId: UserId, year: number) {
   const virtuals = await virtualOccurrencesForRange(userId, yearFrom, yearTo);
   for (const v of virtuals) {
     const m = Number.parseInt(v.occurredAt.slice(5, 7), 10);
-    classify(buckets[m], v.kind, Number(v.amountMinor));
+    classify(buckets[m], v.kind, v.accountId, Number(v.amountMinor));
   }
 
   return Array.from({ length: 12 }, (_, i) => {
@@ -481,41 +529,34 @@ export async function totalsByMonthForYear(userId: UserId, year: number) {
 
 export async function dailyTotalsForMonth(userId: UserId, year: number, month: number) {
   const { from, to } = monthRange(year, month);
-  const [rows, virtuals] = await Promise.all([
+  const [rows, virtuals, liabilityIds] = await Promise.all([
     db
       .select({
         day: sql<string>`to_char(${transactions.occurredAt}::date, 'YYYY-MM-DD')`,
         kind: transactions.kind,
+        accountId: transactions.accountId,
         total: sum(transactions.amountMinor).mapWith(Number),
       })
       .from(transactions)
       .where(and(eq(transactions.userId, userId), between(transactions.occurredAt, from, to)))
-      .groupBy(sql`to_char(${transactions.occurredAt}::date, 'YYYY-MM-DD')`, transactions.kind),
+      .groupBy(
+        sql`to_char(${transactions.occurredAt}::date, 'YYYY-MM-DD')`,
+        transactions.kind,
+        transactions.accountId,
+      ),
     virtualOccurrencesForRange(userId, from, to),
+    getLiabilityAccountIds(userId),
   ]);
 
   const map: Record<string, number> = {};
   for (const r of rows) {
-    if (
-      NON_CASHFLOW_KINDS.has(r.kind) ||
-      r.kind === 'income' ||
-      r.kind === 'income_fixed' ||
-      r.kind === 'income_variable' ||
-      r.kind === 'refund'
-    ) {
-      continue;
-    }
+    if (!isCashflowRow(r.kind, r.accountId, liabilityIds)) continue;
+    if (INCOME_KIND_SET.has(r.kind)) continue;
     map[r.day] = (map[r.day] ?? 0) + (r.total ?? 0);
   }
   for (const v of virtuals) {
-    if (
-      NON_CASHFLOW_KINDS.has(v.kind) ||
-      v.kind === 'income' ||
-      v.kind === 'income_fixed' ||
-      v.kind === 'income_variable' ||
-      v.kind === 'refund'
-    )
-      continue;
+    if (!isCashflowRow(v.kind, v.accountId, liabilityIds)) continue;
+    if (INCOME_KIND_SET.has(v.kind)) continue;
     map[v.occurredAt] = (map[v.occurredAt] ?? 0) + Number(v.amountMinor);
   }
   return map;
@@ -523,10 +564,12 @@ export async function dailyTotalsForMonth(userId: UserId, year: number, month: n
 
 export async function totalsByCategoryByMonth(userId: UserId, year: number, month: number) {
   const { from, to } = monthRange(year, month);
-  const [rows, virtuals] = await Promise.all([
+  const [rows, virtuals, liabilityIds] = await Promise.all([
     db
       .select({
         categoryId: transactions.categoryId,
+        kind: transactions.kind,
+        accountId: transactions.accountId,
         total: sum(transactions.amountMinor).mapWith(Number),
       })
       .from(transactions)
@@ -537,15 +580,20 @@ export async function totalsByCategoryByMonth(userId: UserId, year: number, mont
           inArray(transactions.kind, [...EXPENSE_KINDS]),
         ),
       )
-      .groupBy(transactions.categoryId),
+      .groupBy(transactions.categoryId, transactions.kind, transactions.accountId),
     virtualOccurrencesForRange(userId, from, to),
+    getLiabilityAccountIds(userId),
   ]);
 
   const expenseKindsSet = new Set<string>(EXPENSE_KINDS);
   const map = new Map<string | null, number>();
-  for (const r of rows) map.set(r.categoryId, r.total ?? 0);
+  for (const r of rows) {
+    if (!isCashflowRow(r.kind, r.accountId, liabilityIds)) continue;
+    map.set(r.categoryId, (map.get(r.categoryId) ?? 0) + (r.total ?? 0));
+  }
   for (const v of virtuals) {
     if (!expenseKindsSet.has(v.kind)) continue;
+    if (!isCashflowRow(v.kind, v.accountId, liabilityIds)) continue;
     map.set(v.categoryId, (map.get(v.categoryId) ?? 0) + Number(v.amountMinor));
   }
   return Array.from(map.entries()).map(([categoryId, total]) => ({ categoryId, total }));
