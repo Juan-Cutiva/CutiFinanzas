@@ -6,14 +6,6 @@ import { db } from '@/db/client';
 import { accounts, recurringRules, transactions } from '@/db/schema';
 import type { UserId } from '@/types/ids';
 
-const EXPENSE_KINDS = [
-  'expense_fixed',
-  'expense_variable',
-  'debt_payment',
-  'savings_contribution',
-  'credit_card_payment',
-] as const;
-
 const INCOME_KINDS = ['income', 'income_fixed', 'income_variable'] as const;
 
 const NON_CASHFLOW_KINDS = new Set(['transfer']);
@@ -564,6 +556,12 @@ export async function dailyTotalsForMonth(userId: UserId, year: number, month: n
 
 export async function totalsByCategoryByMonth(userId: UserId, year: number, month: number) {
   const { from, to } = monthRange(year, month);
+  // Categorías solo aplican a gastos genuinos (expense_fixed/variable).
+  // credit_card_payment, debt_payment y savings_contribution no son
+  // "categorías" sino conceptos propios; quedan fuera del breakdown por
+  // categoría para no contaminar reportes.
+  const CATEGORIZABLE_EXPENSE = ['expense_fixed', 'expense_variable'] as const;
+
   const [rows, virtuals, liabilityIds] = await Promise.all([
     db
       .select({
@@ -577,7 +575,7 @@ export async function totalsByCategoryByMonth(userId: UserId, year: number, mont
         and(
           eq(transactions.userId, userId),
           between(transactions.occurredAt, from, to),
-          inArray(transactions.kind, [...EXPENSE_KINDS]),
+          inArray(transactions.kind, [...CATEGORIZABLE_EXPENSE]),
         ),
       )
       .groupBy(transactions.categoryId, transactions.kind, transactions.accountId),
@@ -585,14 +583,14 @@ export async function totalsByCategoryByMonth(userId: UserId, year: number, mont
     getLiabilityAccountIds(userId),
   ]);
 
-  const expenseKindsSet = new Set<string>(EXPENSE_KINDS);
+  const categorizableSet = new Set<string>(CATEGORIZABLE_EXPENSE);
   const map = new Map<string | null, number>();
   for (const r of rows) {
     if (!isCashflowRow(r.kind, r.accountId, liabilityIds)) continue;
     map.set(r.categoryId, (map.get(r.categoryId) ?? 0) + (r.total ?? 0));
   }
   for (const v of virtuals) {
-    if (!expenseKindsSet.has(v.kind)) continue;
+    if (!categorizableSet.has(v.kind)) continue;
     if (!isCashflowRow(v.kind, v.accountId, liabilityIds)) continue;
     map.set(v.categoryId, (map.get(v.categoryId) ?? 0) + Number(v.amountMinor));
   }

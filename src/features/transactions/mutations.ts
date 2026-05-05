@@ -594,13 +594,17 @@ export async function updateTransactionFull(userId: UserId, input: UpdateTransac
       .returning();
     recurringRuleId = rule?.id ?? null;
   } else if (wasFixed && willBeFixed) {
-    // Sigue fijo: actualizar la regla con los nuevos valores.
+    // Sigue fijo: actualizar la regla con los nuevos valores. Sincroniza
+    // también debtId/savingsGoalId para que el cron use el destino correcto
+    // en futuras ocurrencias.
     await db
       .update(recurringRules)
       .set({
         accountId: input.accountId,
         transferAccountId: input.transferAccountId ?? null,
         categoryId: input.categoryId ?? null,
+        debtId: input.kind === 'debt_payment' ? (input.debtId ?? null) : null,
+        savingsGoalId: input.kind === 'savings_contribution' ? (input.savingsGoalId ?? null) : null,
         kind: input.kind,
         amountMinor: newAmount,
         name: input.description?.trim() || existing.description || 'Movimiento recurrente',

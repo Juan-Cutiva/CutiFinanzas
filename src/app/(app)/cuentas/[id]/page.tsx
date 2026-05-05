@@ -7,8 +7,9 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getOrCreateUser } from '@/db/queries/users';
-import { type AccountType, balanceDeltaFor, classifyAccount } from '@/features/accounts/domain';
+import { type AccountType, classifyAccount } from '@/features/accounts/domain';
 import {
+  computeAccountBalance,
   getAccountById,
   getAccountTransactions,
   listAccountsByUser,
@@ -35,12 +36,15 @@ export default async function AccountDetailPage({ params }: Props) {
   if (!account) notFound();
 
   const userId = user.id as never;
-  const [txs, categories, accountsRaw, debtsRaw, goalsRaw] = await Promise.all([
+  // computeAccountBalance suma desde initial sin truncar (a diferencia de
+  // recomputar localmente sobre los últimos 200 movimientos).
+  const [txs, categories, accountsRaw, debtsRaw, goalsRaw, balanceMinor] = await Promise.all([
     getAccountTransactions(userId, account.id),
     listCategoriesByUser(userId),
     listAccountsByUser(userId),
     listDebtsByUser(userId),
     listSavingsGoals(userId),
+    computeAccountBalance(userId, account.id),
   ]);
   const accounts = accountsRaw.map((a) => ({
     id: a.id,
@@ -50,17 +54,6 @@ export default async function AccountDetailPage({ params }: Props) {
   }));
   const debts = debtsRaw.map((d) => ({ id: d.id, name: d.name, currency: d.currency }));
   const savingsGoals = goalsRaw.map((g) => ({ id: g.id, name: g.name, currency: g.currency }));
-
-  let balanceMinor = BigInt(account.initialBalanceMinor);
-  for (const t of txs) {
-    const isOrigin = t.accountId === account.id;
-    balanceMinor += balanceDeltaFor(
-      account.type as AccountType,
-      t.kind,
-      isOrigin,
-      t.amountMinor as bigint,
-    );
-  }
 
   const balance = Number(balanceMinor) / 100;
   const positive = balance >= 0;

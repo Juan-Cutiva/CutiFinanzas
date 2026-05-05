@@ -91,6 +91,7 @@ export async function recordDebtUsage(userId: UserId, input: RecordDebtUsageInpu
   const currency = existing.currency as CurrencyCode;
   const usageMinor = amountMajorToMinor(input.amount, currency);
   const today = new Date().toISOString().slice(0, 10);
+  const occurredAt = input.occurredAt ?? today;
 
   await db.insert(debtEvents).values({
     userId,
@@ -98,7 +99,7 @@ export async function recordDebtUsage(userId: UserId, input: RecordDebtUsageInpu
     amountMinor: usageMinor,
     currency,
     description: input.description,
-    occurredAt: today,
+    occurredAt,
   });
 
   const [row] = await db

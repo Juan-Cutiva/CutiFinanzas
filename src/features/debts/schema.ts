@@ -27,6 +27,7 @@ export const recordDebtUsageSchema = z.object({
   id: z.string().min(1),
   amount: z.coerce.number().positive('El monto debe ser positivo'),
   description: z.string().trim().min(1, 'Describe el motivo').max(200),
+  occurredAt: isoDate.optional(),
 });
 export type RecordDebtUsageInput = z.infer<typeof recordDebtUsageSchema>;
 
@@ -34,6 +35,7 @@ export const updateDebtUsageSchema = z.object({
   eventId: z.string().min(1),
   amount: z.coerce.number().positive('El monto debe ser positivo'),
   description: z.string().trim().min(1, 'Describe el motivo').max(200),
+  occurredAt: isoDate.optional(),
 });
 export type UpdateDebtUsageInput = z.infer<typeof updateDebtUsageSchema>;
 

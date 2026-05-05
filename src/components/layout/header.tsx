@@ -1,6 +1,6 @@
 'use client';
 
-import { ClerkLoaded, ClerkLoading, UserButton } from '@clerk/nextjs';
+import { UserButton } from '@clerk/nextjs';
 import { Suspense } from 'react';
 import { MonthSwitcher } from './month-switcher';
 import { ThemeToggle } from './theme-toggle';
@@ -16,24 +16,15 @@ export function Header() {
           <MonthSwitcher />
         </Suspense>
       </div>
-      <div className="flex shrink-0 items-center gap-1 md:gap-2">
+      <div className="flex shrink-0 items-center gap-1 md:gap-2" suppressHydrationWarning>
         <ThemeToggle />
-        <ClerkLoading>
-          <div
-            className="size-8 rounded-full bg-muted ring-1 ring-border"
-            aria-hidden
-            suppressHydrationWarning
-          />
-        </ClerkLoading>
-        <ClerkLoaded>
-          <UserButton
-            appearance={{
-              elements: {
-                avatarBox: 'size-8 ring-1 ring-border',
-              },
-            }}
-          />
-        </ClerkLoaded>
+        <UserButton
+          appearance={{
+            elements: {
+              avatarBox: 'size-8 ring-1 ring-border',
+            },
+          }}
+        />
       </div>
     </header>
   );

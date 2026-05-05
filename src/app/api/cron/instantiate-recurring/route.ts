@@ -35,48 +35,60 @@ export async function GET(req: NextRequest) {
     let cursor = currentDate;
 
     while (cursor <= today && (!rule.endDate || cursor <= rule.endDate)) {
-      await db.insert(transactions).values({
-        userId: rule.userId,
-        accountId: rule.accountId,
-        transferAccountId: rule.transferAccountId ?? null,
-        categoryId: rule.categoryId ?? null,
-        debtId: rule.debtId ?? null,
-        savingsGoalId: rule.savingsGoalId ?? null,
-        kind: rule.kind,
-        amountMinor: rule.amountMinor,
-        currency: rule.currency,
-        occurredAt: cursor,
-        description: rule.name,
-        notes: rule.notes ?? null,
-        isPaid: false,
-        isRecurring: true,
-        recurringRuleId: rule.id,
-        quincena: getQuincenaFromIsoDate(cursor),
-      });
+      // Idempotente: el unique index (recurring_rule_id, occurred_at) evita
+      // duplicados si el cron corre dos veces o si togglePaid ya creó la
+      // fila. Los ajustes de balance solo se aplican si efectivamente se
+      // insertó una fila nueva.
+      const inserted = await db
+        .insert(transactions)
+        .values({
+          userId: rule.userId,
+          accountId: rule.accountId,
+          transferAccountId: rule.transferAccountId ?? null,
+          categoryId: rule.categoryId ?? null,
+          debtId: rule.debtId ?? null,
+          savingsGoalId: rule.savingsGoalId ?? null,
+          kind: rule.kind,
+          amountMinor: rule.amountMinor,
+          currency: rule.currency,
+          occurredAt: cursor,
+          description: rule.name,
+          notes: rule.notes ?? null,
+          isPaid: false,
+          isRecurring: true,
+          recurringRuleId: rule.id,
+          quincena: getQuincenaFromIsoDate(cursor),
+        })
+        .onConflictDoNothing({
+          target: [transactions.recurringRuleId, transactions.occurredAt],
+        })
+        .returning({ id: transactions.id });
 
-      if (rule.kind === 'debt_payment' && rule.debtId) {
-        await db
-          .update(debts)
-          .set({
-            currentBalanceMinor: sql`GREATEST(0::bigint, ${debts.currentBalanceMinor} - ${(rule.amountMinor as bigint).toString()}::bigint)`,
-            paidInstallments: sql`${debts.paidInstallments} + 1`,
-            updatedAt: sql`now()`,
-          })
-          .where(and(eq(debts.userId, rule.userId), eq(debts.id, rule.debtId)));
-      }
-      if (rule.kind === 'savings_contribution' && rule.savingsGoalId) {
-        await db
-          .update(savingsGoals)
-          .set({
-            currentAmountMinor: sql`${savingsGoals.currentAmountMinor} + ${(rule.amountMinor as bigint).toString()}::bigint`,
-            updatedAt: sql`now()`,
-          })
-          .where(
-            and(eq(savingsGoals.userId, rule.userId), eq(savingsGoals.id, rule.savingsGoalId)),
-          );
+      if (inserted.length > 0) {
+        if (rule.kind === 'debt_payment' && rule.debtId) {
+          await db
+            .update(debts)
+            .set({
+              currentBalanceMinor: sql`GREATEST(0::bigint, ${debts.currentBalanceMinor} - ${(rule.amountMinor as bigint).toString()}::bigint)`,
+              paidInstallments: sql`${debts.paidInstallments} + 1`,
+              updatedAt: sql`now()`,
+            })
+            .where(and(eq(debts.userId, rule.userId), eq(debts.id, rule.debtId)));
+        }
+        if (rule.kind === 'savings_contribution' && rule.savingsGoalId) {
+          await db
+            .update(savingsGoals)
+            .set({
+              currentAmountMinor: sql`${savingsGoals.currentAmountMinor} + ${(rule.amountMinor as bigint).toString()}::bigint`,
+              updatedAt: sql`now()`,
+            })
+            .where(
+              and(eq(savingsGoals.userId, rule.userId), eq(savingsGoals.id, rule.savingsGoalId)),
+            );
+        }
+        created++;
       }
 
-      created++;
       cursor = nextOccurrence(cursor, rule.dayOfMonth);
     }
 

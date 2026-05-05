@@ -9,7 +9,7 @@ import {
   calculateRemainingMonths,
   debtProgress,
 } from '@/features/debts/domain';
-import { listDebtsByUser } from '@/features/debts/queries';
+import { listDebtsWithBalanceAsOf } from '@/features/debts/queries';
 import { listSavingsGoals } from '@/features/savings/queries';
 import { totalsByMonth, totalsForRange } from '@/features/transactions/queries';
 import { dayjs, formatAmount } from '@/lib/format';
@@ -50,12 +50,15 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   // El balance se calcula al cierre del último día del mes seleccionado.
   const lastDayOfMonth = new Date(year, month, 0).getDate();
   const endOfMonthIso = `${year}-${String(month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
+  const todayIso = now.format('YYYY-MM-DD');
+  const isFutureMonth = endOfMonthIso > todayIso;
 
-  const [accounts, totals, goals, debts, periodTotals] = await Promise.all([
+  const [accounts, accountsToday, totals, goals, debts, periodTotals] = await Promise.all([
     listAccountsWithBalanceAsOf(userId, endOfMonthIso),
+    isFutureMonth ? listAccountsWithBalanceAsOf(userId, todayIso) : Promise.resolve(null),
     totalsByMonth(userId, year, month),
     listSavingsGoals(userId),
-    listDebtsByUser(userId),
+    listDebtsWithBalanceAsOf(userId, endOfMonthIso),
     Promise.all(periods.map((p) => totalsForRange(userId, p.from, p.to))),
   ]);
 
@@ -78,6 +81,12 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const liabilityBalanceMajor = sameCurrency
     .filter((a) => a.classification === 'liability')
     .reduce((acc, a) => acc + Number(a.balanceMinor) / 100, 0);
+
+  const assetBalanceTodayMajor = accountsToday
+    ? accountsToday
+        .filter((a) => a.currency === currency && a.classification === 'asset')
+        .reduce((acc, a) => acc + Number(a.balanceMinor) / 100, 0)
+    : assetBalanceMajor;
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
@@ -102,13 +111,15 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         />
         <KpiCard
           icon={<Wallet className="size-4 text-primary" aria-hidden />}
-          label="Balance disponible"
+          label={isFutureMonth ? 'Balance proyectado fin de mes' : 'Balance disponible'}
           value={formatAmount(assetBalanceMajor, currency)}
           tone={assetBalanceMajor >= 0 ? 'positive' : 'negative'}
           hint={
-            liabilityBalanceMajor > 0
-              ? `Deuda en tarjetas ${formatAmount(liabilityBalanceMajor, currency)} (no incluida)`
-              : 'Solo cuentas en efectivo, débito y ahorros'
+            isFutureMonth
+              ? `Hoy: ${formatAmount(assetBalanceTodayMajor, currency)} — los pagos fijos se aplican al pasar la fecha.`
+              : liabilityBalanceMajor > 0
+                ? `Deuda en tarjetas ${formatAmount(liabilityBalanceMajor, currency)} (no incluida)`
+                : 'Solo cuentas en efectivo, débito y ahorros'
           }
         />
         <KpiCard

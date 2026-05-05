@@ -1,8 +1,9 @@
 import 'server-only';
-import { and, asc, eq, isNull, lte, or, sum } from 'drizzle-orm';
+import dayjs from 'dayjs';
+import { and, asc, eq, isNull, lte, or, sql, sum } from 'drizzle-orm';
 import { cache } from 'react';
 import { db } from '@/db/client';
-import { accounts, transactions } from '@/db/schema';
+import { accounts, recurringRules, transactions } from '@/db/schema';
 import type { UserId } from '@/types/ids';
 import { type AccountType, balanceDeltaFor, classifyAccount } from './domain';
 
@@ -73,10 +74,92 @@ export const listAccountsWithBalance = cache(async function listAccountsWithBala
   });
 });
 
+interface ProjectedOccurrence {
+  ruleId: string;
+  occurredAt: string;
+  kind: string;
+  amountMinor: bigint;
+  accountId: string;
+  transferAccountId: string | null;
+}
+
 /**
- * Saldo de cada cuenta al cierre de la fecha indicada (inclusive).
- * Útil para el dashboard cuando el usuario navega a un mes pasado o futuro:
- * el "balance disponible" debe reflejar el estado al final de ese mes.
+ * Proyecta hacia ADELANTE las ocurrencias virtuales de reglas recurrentes
+ * que aún NO existen como filas reales. El intervalo es (today, asOfIso].
+ *
+ * Para meses pasados, las filas reales (creadas por el cron) ya están en
+ * la tabla y se cuentan vía SQL. Para meses futuros, las virtuales se
+ * proyectan aquí. Si asOfIso es anterior a today, no proyectamos nada
+ * (el pasado se reconstruye solo con datos reales).
+ */
+async function projectedRecurringUpTo(
+  userId: UserId,
+  asOfIso: string,
+): Promise<ProjectedOccurrence[]> {
+  const todayIso = dayjs().format('YYYY-MM-DD');
+  if (asOfIso <= todayIso) return [];
+
+  const rules = await db.query.recurringRules.findMany({
+    where: and(
+      eq(recurringRules.userId, userId),
+      eq(recurringRules.isActive, true),
+      lte(recurringRules.startDate, asOfIso),
+    ),
+  });
+  if (rules.length === 0) return [];
+
+  const realRows = await db
+    .select({
+      recurringRuleId: transactions.recurringRuleId,
+      occurredAt: transactions.occurredAt,
+    })
+    .from(transactions)
+    .where(and(eq(transactions.userId, userId), sql`${transactions.recurringRuleId} is not null`));
+  const realKeys = new Set(
+    realRows.filter((r) => r.recurringRuleId).map((r) => `${r.recurringRuleId}:${r.occurredAt}`),
+  );
+
+  const out: ProjectedOccurrence[] = [];
+  for (const rule of rules) {
+    if (rule.frequency !== 'monthly') continue;
+
+    let cursor = dayjs(todayIso);
+    if (cursor.isBefore(rule.startDate)) cursor = dayjs(rule.startDate);
+
+    let safety = 36;
+    while (cursor.format('YYYY-MM-DD') <= asOfIso) {
+      if (safety-- <= 0) break;
+      const lastDay = cursor.endOf('month').date();
+      const day = Math.min(rule.dayOfMonth ?? cursor.date(), lastDay);
+      const dateStr = cursor.date(day).format('YYYY-MM-DD');
+      if (
+        dateStr > todayIso &&
+        dateStr <= asOfIso &&
+        dateStr >= rule.startDate &&
+        (!rule.endDate || dateStr <= rule.endDate) &&
+        !realKeys.has(`${rule.id}:${dateStr}`)
+      ) {
+        out.push({
+          ruleId: rule.id,
+          occurredAt: dateStr,
+          kind: rule.kind,
+          amountMinor: rule.amountMinor as bigint,
+          accountId: rule.accountId,
+          transferAccountId: rule.transferAccountId ?? null,
+        });
+      }
+      cursor = cursor.add(1, 'month').startOf('month');
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Saldo proyectado de cada cuenta al cierre de la fecha indicada.
+ * Suma el saldo inicial + transacciones reales hasta esa fecha + ocurrencias
+ * virtuales recurrentes que aún no se han materializado pero que ocurrirían
+ * en o antes de esa fecha (proyección hacia el futuro).
  */
 export const listAccountsWithBalanceAsOf = cache(async function listAccountsWithBalanceAsOf(
   userId: UserId,
@@ -85,31 +168,33 @@ export const listAccountsWithBalanceAsOf = cache(async function listAccountsWith
   const list = await listAccountsByUser(userId);
   if (list.length === 0) return [];
 
-  const sumsAsAccount = await db
-    .select({
-      accountId: transactions.accountId,
-      kind: transactions.kind,
-      total: sum(transactions.amountMinor).mapWith(Number),
-    })
-    .from(transactions)
-    .where(and(eq(transactions.userId, userId), lte(transactions.occurredAt, asOfIso)))
-    .groupBy(transactions.accountId, transactions.kind);
-
-  const sumsAsTransfer = await db
-    .select({
-      accountId: transactions.transferAccountId,
-      kind: transactions.kind,
-      total: sum(transactions.amountMinor).mapWith(Number),
-    })
-    .from(transactions)
-    .where(
-      and(
-        eq(transactions.userId, userId),
-        lte(transactions.occurredAt, asOfIso),
-        or(eq(transactions.kind, 'transfer'), eq(transactions.kind, 'credit_card_payment')),
-      ),
-    )
-    .groupBy(transactions.transferAccountId, transactions.kind);
+  const [sumsAsAccount, sumsAsTransfer, projected] = await Promise.all([
+    db
+      .select({
+        accountId: transactions.accountId,
+        kind: transactions.kind,
+        total: sum(transactions.amountMinor).mapWith(Number),
+      })
+      .from(transactions)
+      .where(and(eq(transactions.userId, userId), lte(transactions.occurredAt, asOfIso)))
+      .groupBy(transactions.accountId, transactions.kind),
+    db
+      .select({
+        accountId: transactions.transferAccountId,
+        kind: transactions.kind,
+        total: sum(transactions.amountMinor).mapWith(Number),
+      })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          lte(transactions.occurredAt, asOfIso),
+          or(eq(transactions.kind, 'transfer'), eq(transactions.kind, 'credit_card_payment')),
+        ),
+      )
+      .groupBy(transactions.transferAccountId, transactions.kind),
+    projectedRecurringUpTo(userId, asOfIso),
+  ]);
 
   return list.map((acc) => {
     let balanceMinor = BigInt(acc.initialBalanceMinor);
@@ -121,6 +206,14 @@ export const listAccountsWithBalanceAsOf = cache(async function listAccountsWith
     }
     for (const s of destinationSums) {
       balanceMinor += balanceDeltaFor(acc.type as AccountType, s.kind, false, BigInt(s.total ?? 0));
+    }
+    for (const p of projected) {
+      if (p.accountId === acc.id) {
+        balanceMinor += balanceDeltaFor(acc.type as AccountType, p.kind, true, p.amountMinor);
+      }
+      if (p.transferAccountId === acc.id) {
+        balanceMinor += balanceDeltaFor(acc.type as AccountType, p.kind, false, p.amountMinor);
+      }
     }
 
     return {

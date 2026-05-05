@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "uniq_tx_recurring_occurrence" ON "transactions" USING btree ("recurring_rule_id","occurred_at") WHERE "transactions"."recurring_rule_id" is not null;

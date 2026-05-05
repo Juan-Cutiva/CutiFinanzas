@@ -9,6 +9,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
   varchar,
 } from 'drizzle-orm/pg-core';
 import { accounts } from './accounts';
@@ -64,6 +65,11 @@ export const transactions = pgTable(
     index('idx_tx_user_kind_date').on(t.userId, t.kind, t.occurredAt),
     index('idx_tx_user_account_kind').on(t.userId, t.accountId, t.kind),
     index('idx_tx_user_transfer_account').on(t.userId, t.transferAccountId),
+    // Garantiza idempotencia del cron y del toggle-paid sobre virtuales:
+    // (rule_id, occurred_at) único cuando ambos campos son no-null.
+    uniqueIndex('uniq_tx_recurring_occurrence')
+      .on(t.recurringRuleId, t.occurredAt)
+      .where(sql`${t.recurringRuleId} is not null`),
   ],
 );
 

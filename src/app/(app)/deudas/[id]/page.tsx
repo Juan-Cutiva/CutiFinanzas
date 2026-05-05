@@ -20,12 +20,13 @@ import {
 import {
   getDebtById,
   getDebtPayments,
+  getDebtProjectedBalance,
   getDebtUsages,
   listDebtsByUser,
 } from '@/features/debts/queries';
 import { listSavingsGoals } from '@/features/savings/queries';
 import { TransactionList } from '@/features/transactions/components/transaction-list';
-import { formatAmount, formatDate } from '@/lib/format';
+import { dayjs, formatAmount, formatDate } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 
 export const metadata: Metadata = { title: 'Detalle de deuda' };
@@ -33,23 +34,36 @@ export const dynamic = 'force-dynamic';
 
 interface Props {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ y?: string; m?: string }>;
 }
 
-export default async function DebtDetailPage({ params }: Props) {
+export default async function DebtDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
+  const sp = await searchParams;
   const user = await getOrCreateUser();
   const debt = await getDebtById(user.id as never, id);
   if (!debt) notFound();
 
+  const now = dayjs();
+  const year = Number.parseInt(sp.y ?? String(now.year()), 10);
+  const month = Number.parseInt(sp.m ?? String(now.month() + 1), 10);
+  const lastDay = new Date(year, month, 0).getDate();
+  const asOfIso = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
+
+  const todayIso = now.format('YYYY-MM-DD');
   const userId = user.id as never;
-  const [payments, usages, categories, accountsRaw, debtsRaw, goalsRaw] = await Promise.all([
-    getDebtPayments(userId, debt.id),
-    getDebtUsages(userId, debt.id),
-    listCategoriesByUser(userId),
-    listAccountsByUser(userId),
-    listDebtsByUser(userId),
-    listSavingsGoals(userId),
-  ]);
+  const [payments, usages, categories, accountsRaw, debtsRaw, goalsRaw, projection, today] =
+    await Promise.all([
+      getDebtPayments(userId, debt.id),
+      getDebtUsages(userId, debt.id),
+      listCategoriesByUser(userId),
+      listAccountsByUser(userId),
+      listDebtsByUser(userId),
+      listSavingsGoals(userId),
+      getDebtProjectedBalance(userId, debt.id, asOfIso),
+      getDebtProjectedBalance(userId, debt.id, todayIso),
+    ]);
   const accounts = accountsRaw.map((a) => ({
     id: a.id,
     name: a.name,
@@ -59,15 +73,17 @@ export default async function DebtDetailPage({ params }: Props) {
   const debts = debtsRaw.map((d) => ({ id: d.id, name: d.name, currency: d.currency }));
   const savingsGoals = goalsRaw.map((g) => ({ id: g.id, name: g.name, currency: g.currency }));
 
-  const initial = Number(debt.initialAmountMinor) / 100;
-  const balance = Number(debt.currentBalanceMinor) / 100;
+  const initial = Number(projection.initialAmountMinor) / 100;
+  const balance = Number(projection.currentBalanceMinor) / 100;
+  const balanceToday = Number(today.currentBalanceMinor) / 100;
+  const showProjection = asOfIso > todayIso && balanceToday !== balance;
   const monthly = Number(debt.monthlyPaymentMinor) / 100;
   const monthlyRate = annualToMonthlyRate(
     debt.interestRateAnnual ? Number(debt.interestRateAnnual) : null,
   );
   const monthsLeft = calculateRemainingMonths(balance, monthlyRate, monthly);
   const progress = debtProgress(initial, balance);
-  const totalPaid = payments.reduce((acc, p) => acc + Number(p.amountMinor), 0) / 100;
+  const totalPaid = Number(projection.totalPaidMinor) / 100;
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
@@ -105,13 +121,24 @@ export default async function DebtDetailPage({ params }: Props) {
           </div>
 
           <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">Saldo restante</p>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">
+              {showProjection ? `Saldo proyectado · fin de ${monthLabel}` : 'Saldo actual'}
+            </p>
             <p className="font-mono tabular-nums text-3xl font-semibold tracking-tight text-amount-negative">
               {formatAmount(balance, debt.currency as CurrencyCode)}
             </p>
             <p className="text-xs text-muted-foreground">
               de {formatAmount(initial, debt.currency as CurrencyCode)} iniciales
             </p>
+            {showProjection ? (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Saldo actual:{' '}
+                <span className="font-mono tabular-nums font-medium text-foreground">
+                  {formatAmount(balanceToday, debt.currency as CurrencyCode)}
+                </span>{' '}
+                — los descuentos por cuotas fijas se aplican al pasar la fecha de pago.
+              </p>
+            ) : null}
           </div>
 
           <div>
@@ -132,7 +159,7 @@ export default async function DebtDetailPage({ params }: Props) {
             <div>
               <p className="text-xs text-muted-foreground">Cuotas pagadas</p>
               <p className="font-mono tabular-nums font-semibold">
-                {debt.paidInstallments}
+                {projection.paidInstallments}
                 {debt.totalInstallments ? ` / ${debt.totalInstallments}` : ''}
               </p>
             </div>
