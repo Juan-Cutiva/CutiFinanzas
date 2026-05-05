@@ -9,7 +9,7 @@ import { type CategoryInput, DEFAULT_CATEGORIES, type UpdateCategoryInput } from
 export async function createCategory(userId: UserId, input: CategoryInput) {
   const [row] = await db
     .insert(categories)
-    .values({ ...input, userId, parentId: input.parentId ?? null })
+    .values({ ...input, userId })
     .returning();
   if (!row) throw new Error('No se pudo crear la categoría');
   return row;

@@ -3,12 +3,7 @@ import { formatAmount } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 
 const styles = StyleSheet.create({
-  page: {
-    padding: 40,
-    fontSize: 10,
-    fontFamily: 'Helvetica',
-    color: '#1a1320',
-  },
+  page: { padding: 40, fontSize: 10, fontFamily: 'Helvetica', color: '#1a1320' },
   header: { marginBottom: 16, borderBottom: '2 solid #572364', paddingBottom: 8 },
   title: { fontSize: 22, fontWeight: 700, color: '#572364', letterSpacing: -0.5 },
   subtitle: { fontSize: 10, color: '#666', marginTop: 2 },
@@ -56,22 +51,14 @@ export interface MonthlyReportData {
   currency: CurrencyCode;
   totals: {
     income: number;
-    expenseFixed: number;
-    expenseVariable: number;
-    debtPayment: number;
-    savingsContribution: number;
+    expense: number;
+    savings: number;
   };
   byCategory: Array<{ name: string; planned: number; spent: number }>;
-  observations?: string;
 }
 
 export function MonthlyReportPDF({ data }: { data: MonthlyReportData }) {
-  const totalExpense =
-    data.totals.expenseFixed +
-    data.totals.expenseVariable +
-    data.totals.debtPayment +
-    data.totals.savingsContribution;
-  const balance = data.totals.income - totalExpense;
+  const balance = data.totals.income - data.totals.expense - data.totals.savings;
   const fmt = (n: number) => formatAmount(n, data.currency);
 
   return (
@@ -87,10 +74,8 @@ export function MonthlyReportPDF({ data }: { data: MonthlyReportData }) {
         <Text style={styles.sectionTitle}>Resumen general</Text>
         <View>
           <Row label="Total ingresos (+)" value={fmt(data.totals.income)} />
-          <Row label="Gastos fijos (−)" value={fmt(data.totals.expenseFixed)} />
-          <Row label="Gastos variables (−)" value={fmt(data.totals.expenseVariable)} />
-          <Row label="Pagos de deuda (−)" value={fmt(data.totals.debtPayment)} />
-          <Row label="Aportes a ahorro (−)" value={fmt(data.totals.savingsContribution)} />
+          <Row label="Total gastos (−)" value={fmt(data.totals.expense)} />
+          <Row label="Aportes a ahorro (−)" value={fmt(data.totals.savings)} />
           <View style={styles.rowEmphasis}>
             <Text style={styles.rowLabel}>Balance neto (=)</Text>
             <Text style={styles.rowValue}>{fmt(balance)}</Text>
@@ -119,14 +104,7 @@ export function MonthlyReportPDF({ data }: { data: MonthlyReportData }) {
           )}
         </View>
 
-        {data.observations ? (
-          <>
-            <Text style={styles.sectionTitle}>Observaciones</Text>
-            <Text>{data.observations}</Text>
-          </>
-        ) : null}
-
-        <Text style={styles.footer}>CutiFinanzas · cuti-finanzas.vercel.app</Text>
+        <Text style={styles.footer}>CutiFinanzas · cash-basis · single source of truth</Text>
       </Page>
     </Document>
   );

@@ -13,9 +13,8 @@ import {
   savingsGoals,
   transactions,
 } from '@/db/schema';
-import { type AccountType, classifyAccount } from '@/features/accounts/domain';
-import { ACCOUNT_TYPE_LABELS } from '@/features/accounts/schema';
-import { TX_KIND_LABELS } from '@/features/transactions/schema';
+import { ACCOUNT_TYPE_LABELS, type AccountTypeCode } from '@/features/accounts/schema';
+import { isAsset, KIND_LABELS, type TransactionKind } from '@/lib/accounting/shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -34,9 +33,7 @@ function styleHeader(row: ExcelJS.Row) {
     cell.fill = HEADER_FILL;
     cell.font = HEADER_FONT;
     cell.alignment = { vertical: 'middle', horizontal: 'left' };
-    cell.border = {
-      bottom: { style: 'thin', color: { argb: 'FF572364' } },
-    };
+    cell.border = { bottom: { style: 'thin', color: { argb: 'FF572364' } } };
   });
   row.height = 22;
 }
@@ -76,45 +73,26 @@ export async function GET(_req: NextRequest) {
   wb.created = new Date();
 
   // Resumen
-  const summary = wb.addWorksheet('Resumen', { properties: { tabColor: { argb: 'FF572364' } } });
+  const summary = wb.addWorksheet('Resumen');
   summary.columns = [
     { header: 'Métrica', key: 'metric', width: 32 },
     { header: 'Valor', key: 'value', width: 24 },
   ];
   styleHeader(summary.getRow(1));
-
-  const totalIncomeMinor = txs
-    .filter((t) => ['income', 'income_fixed', 'income_variable', 'refund'].includes(t.kind))
-    .reduce((acc, t) => acc + Number(t.amountMinor), 0);
-  const totalExpenseMinor = txs
-    .filter((t) =>
-      ['expense_fixed', 'expense_variable', 'debt_payment', 'savings_contribution'].includes(
-        t.kind,
-      ),
-    )
-    .reduce((acc, t) => acc + Number(t.amountMinor), 0);
-
   summary.addRows([
     { metric: 'Usuario', value: user.name ?? user.email ?? user.id },
     { metric: 'Moneda principal', value: user.defaultCurrency },
-    { metric: 'Frecuencia de pago', value: user.payFrequency },
+    { metric: 'Días de cobro', value: (user.payAnchorDates ?? []).join(', ') },
     { metric: 'Exportado el', value: dayjs().format('YYYY-MM-DD HH:mm') },
     { metric: '', value: '' },
     { metric: 'Cuentas registradas', value: accs.length },
     { metric: 'Categorías', value: cats.length },
     { metric: 'Transacciones', value: txs.length },
-    { metric: 'Pagos fijos / recurrentes', value: rrs.length },
-    { metric: 'Deudas', value: dbs.length },
+    { metric: 'Reglas recurrentes', value: rrs.length },
+    { metric: 'Préstamos installment', value: dbs.length },
     { metric: 'Metas de ahorro', value: sgs.length },
     { metric: 'Presupuestos', value: bgs.length },
-    { metric: '', value: '' },
-    { metric: 'Total ingresos histórico', value: totalIncomeMinor / 100 },
-    { metric: 'Total gastos histórico', value: totalExpenseMinor / 100 },
-    { metric: 'Balance neto', value: (totalIncomeMinor - totalExpenseMinor) / 100 },
   ]);
-  for (let i = 14; i <= 16; i++) {
-    summary.getCell(`B${i}`).numFmt = MONEY_FORMAT;
-  }
 
   // Cuentas
   const accountsSheet = wb.addWorksheet('Cuentas');
@@ -133,8 +111,8 @@ export async function GET(_req: NextRequest) {
   for (const a of accs) {
     accountsSheet.addRow({
       name: a.name,
-      type: ACCOUNT_TYPE_LABELS[a.type as keyof typeof ACCOUNT_TYPE_LABELS] ?? a.type,
-      classification: classifyAccount(a.type as AccountType) === 'asset' ? 'Activo' : 'Pasivo',
+      type: ACCOUNT_TYPE_LABELS[a.type as AccountTypeCode] ?? a.type,
+      classification: isAsset(a.type as AccountTypeCode) ? 'Activo' : 'Pasivo',
       currency: a.currency,
       initial: Number(a.initialBalanceMinor) / 100,
       limit: a.creditLimitMinor ? Number(a.creditLimitMinor) / 100 : '',
@@ -152,7 +130,6 @@ export async function GET(_req: NextRequest) {
     { header: 'Nombre', key: 'name', width: 30 },
     { header: 'Color', key: 'color', width: 14 },
     { header: 'Icono', key: 'icon', width: 14 },
-    { header: 'Padre', key: 'parent', width: 24 },
     { header: 'Archivada', key: 'archived', width: 12 },
   ];
   styleHeader(categoriesSheet.getRow(1));
@@ -161,7 +138,6 @@ export async function GET(_req: NextRequest) {
       name: c.name,
       color: c.color,
       icon: c.icon,
-      parent: c.parentId ? (categoriesById.get(c.parentId)?.name ?? '') : '',
       archived: c.archivedAt ? 'Sí' : 'No',
     });
   }
@@ -170,42 +146,36 @@ export async function GET(_req: NextRequest) {
   const txSheet = wb.addWorksheet('Transacciones');
   txSheet.columns = [
     { header: 'Fecha', key: 'date', width: 12 },
-    { header: 'Tipo', key: 'kind', width: 28 },
+    { header: 'Tipo', key: 'kind', width: 22 },
     { header: 'Descripción', key: 'description', width: 32 },
-    { header: 'Cuenta origen', key: 'account', width: 22 },
-    { header: 'Cuenta destino', key: 'transferAccount', width: 22 },
+    { header: 'Cuenta', key: 'account', width: 22 },
+    { header: 'Contra-cuenta', key: 'counter', width: 22 },
     { header: 'Categoría', key: 'category', width: 22 },
-    { header: 'Deuda', key: 'debt', width: 22 },
+    { header: 'Préstamo', key: 'debt', width: 22 },
     { header: 'Meta de ahorro', key: 'goal', width: 22 },
     { header: 'Monto', key: 'amount', width: 14 },
     { header: 'Moneda', key: 'currency', width: 10 },
-    { header: 'Pagado', key: 'isPaid', width: 10 },
+    { header: 'Pagada', key: 'isPaid', width: 10 },
     { header: 'Recurrente', key: 'isRecurring', width: 12 },
     { header: 'Notas', key: 'notes', width: 32 },
   ];
   styleHeader(txSheet.getRow(1));
   txSheet.views = [{ state: 'frozen', ySplit: 1 }];
-  txSheet.autoFilter = {
-    from: { row: 1, column: 1 },
-    to: { row: 1, column: 13 },
-  };
-  const sortedTxs = [...txs].sort((a, b) => (a.occurredAt < b.occurredAt ? 1 : -1));
+  const sortedTxs = [...txs].sort((a, b) => (a.transactionDate < b.transactionDate ? 1 : -1));
   for (const t of sortedTxs) {
     txSheet.addRow({
-      date: t.occurredAt,
-      kind: TX_KIND_LABELS[t.kind as keyof typeof TX_KIND_LABELS] ?? t.kind,
+      date: t.transactionDate,
+      kind: KIND_LABELS[t.kind as TransactionKind] ?? t.kind,
       description: t.description ?? '',
       account: t.accountId ? (accountsById.get(t.accountId)?.name ?? '') : '',
-      transferAccount: t.transferAccountId
-        ? (accountsById.get(t.transferAccountId)?.name ?? '')
-        : '',
+      counter: t.counterAccountId ? (accountsById.get(t.counterAccountId)?.name ?? '') : '',
       category: t.categoryId ? (categoriesById.get(t.categoryId)?.name ?? '') : '',
       debt: t.debtId ? (debtsById.get(t.debtId)?.name ?? '') : '',
       goal: t.savingsGoalId ? (goalsById.get(t.savingsGoalId)?.name ?? '') : '',
       amount: Number(t.amountMinor) / 100,
       currency: t.currency,
       isPaid: t.isPaid ? 'Sí' : 'No',
-      isRecurring: t.isRecurring ? 'Sí' : 'No',
+      isRecurring: t.recurringRuleId ? 'Sí' : 'No',
       notes: t.notes ?? '',
     });
   }
@@ -217,7 +187,7 @@ export async function GET(_req: NextRequest) {
     const rrSheet = wb.addWorksheet('Recurrentes');
     rrSheet.columns = [
       { header: 'Nombre', key: 'name', width: 30 },
-      { header: 'Tipo', key: 'kind', width: 28 },
+      { header: 'Tipo', key: 'kind', width: 22 },
       { header: 'Cuenta', key: 'account', width: 22 },
       { header: 'Categoría', key: 'category', width: 22 },
       { header: 'Monto', key: 'amount', width: 14 },
@@ -233,7 +203,7 @@ export async function GET(_req: NextRequest) {
     for (const r of rrs) {
       rrSheet.addRow({
         name: r.name,
-        kind: TX_KIND_LABELS[r.kind as keyof typeof TX_KIND_LABELS] ?? r.kind,
+        kind: KIND_LABELS[r.kind as TransactionKind] ?? r.kind,
         account: accountsById.get(r.accountId)?.name ?? '',
         category: r.categoryId ? (categoriesById.get(r.categoryId)?.name ?? '') : '',
         amount: Number(r.amountMinor) / 100,
@@ -247,22 +217,17 @@ export async function GET(_req: NextRequest) {
       });
     }
     rrSheet.getColumn('amount').numFmt = MONEY_FORMAT;
-    rrSheet.getColumn('startDate').numFmt = DATE_FORMAT;
-    rrSheet.getColumn('endDate').numFmt = DATE_FORMAT;
-    rrSheet.getColumn('nextOccurrenceDate').numFmt = DATE_FORMAT;
   }
 
-  // Deudas
+  // Préstamos
   if (dbs.length > 0) {
-    const debtsSheet = wb.addWorksheet('Deudas');
+    const debtsSheet = wb.addWorksheet('Préstamos');
     debtsSheet.columns = [
       { header: 'Nombre', key: 'name', width: 30 },
-      { header: 'Saldo inicial', key: 'initial', width: 14 },
-      { header: 'Saldo actual', key: 'current', width: 14 },
+      { header: 'Principal', key: 'principal', width: 14 },
       { header: 'Moneda', key: 'currency', width: 10 },
       { header: 'Tasa anual %', key: 'rate', width: 12 },
       { header: 'Cuota mensual', key: 'monthly', width: 14 },
-      { header: 'Cuotas pagadas', key: 'paid', width: 14 },
       { header: 'Cuotas totales', key: 'total', width: 14 },
       { header: 'Inicio', key: 'start', width: 12 },
       { header: 'Fin', key: 'end', width: 12 },
@@ -272,23 +237,18 @@ export async function GET(_req: NextRequest) {
     for (const d of dbs) {
       debtsSheet.addRow({
         name: d.name,
-        initial: Number(d.initialAmountMinor) / 100,
-        current: Number(d.currentBalanceMinor) / 100,
+        principal: Number(d.principalMinor) / 100,
         currency: d.currency,
         rate: d.interestRateAnnual ? Number(d.interestRateAnnual) : '',
         monthly: Number(d.monthlyPaymentMinor) / 100,
-        paid: d.paidInstallments,
         total: d.totalInstallments ?? '',
         start: d.startDate,
         end: d.endDate ?? '',
         status: d.status,
       });
     }
-    debtsSheet.getColumn('initial').numFmt = MONEY_FORMAT;
-    debtsSheet.getColumn('current').numFmt = MONEY_FORMAT;
+    debtsSheet.getColumn('principal').numFmt = MONEY_FORMAT;
     debtsSheet.getColumn('monthly').numFmt = MONEY_FORMAT;
-    debtsSheet.getColumn('start').numFmt = DATE_FORMAT;
-    debtsSheet.getColumn('end').numFmt = DATE_FORMAT;
   }
 
   // Metas de ahorro
@@ -297,8 +257,6 @@ export async function GET(_req: NextRequest) {
     goalsSheet.columns = [
       { header: 'Nombre', key: 'name', width: 30 },
       { header: 'Meta', key: 'target', width: 14 },
-      { header: 'Acumulado', key: 'current', width: 14 },
-      { header: '% logrado', key: 'pct', width: 12 },
       { header: 'Moneda', key: 'currency', width: 10 },
       { header: 'Aporte mensual', key: 'monthly', width: 14 },
       { header: 'Inicio', key: 'start', width: 12 },
@@ -307,13 +265,9 @@ export async function GET(_req: NextRequest) {
     ];
     styleHeader(goalsSheet.getRow(1));
     for (const g of sgs) {
-      const target = Number(g.targetAmountMinor) / 100;
-      const current = Number(g.currentAmountMinor) / 100;
       goalsSheet.addRow({
         name: g.name,
-        target,
-        current,
-        pct: target > 0 ? Math.round((current / target) * 100) / 100 : 0,
+        target: Number(g.targetAmountMinor) / 100,
         currency: g.currency,
         monthly: Number(g.monthlyContributionMinor) / 100,
         start: g.startDate,
@@ -322,11 +276,7 @@ export async function GET(_req: NextRequest) {
       });
     }
     goalsSheet.getColumn('target').numFmt = MONEY_FORMAT;
-    goalsSheet.getColumn('current').numFmt = MONEY_FORMAT;
     goalsSheet.getColumn('monthly').numFmt = MONEY_FORMAT;
-    goalsSheet.getColumn('pct').numFmt = '0%';
-    goalsSheet.getColumn('start').numFmt = DATE_FORMAT;
-    goalsSheet.getColumn('target_date').numFmt = DATE_FORMAT;
   }
 
   // Presupuestos

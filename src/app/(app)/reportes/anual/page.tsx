@@ -4,9 +4,10 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { getOrCreateUser } from '@/db/queries/users';
 import { YearlyChart } from '@/features/reports/components/yearly-chart';
-import { totalsByMonthForYear } from '@/features/transactions/queries';
+import { getPeriodTotals, monthRange } from '@/lib/accounting';
 import { formatAmount, nowInTz } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
+import type { UserId } from '@/types/ids';
 
 export const metadata: Metadata = { title: 'Reporte anual' };
 export const dynamic = 'force-dynamic';
@@ -17,12 +18,24 @@ interface SearchParams {
 
 export default async function ReporteAnualPage({ searchParams }: SearchParams) {
   const user = await getOrCreateUser();
-  const userId = user.id as never;
+  const userId = user.id as UserId;
   const currency = user.defaultCurrency as CurrencyCode;
   const params = await searchParams;
   const year = Number.parseInt(params.year ?? String(nowInTz(user.timezone).year()), 10);
 
-  const data = await totalsByMonthForYear(userId, year);
+  const data: Array<{
+    month: number;
+    incomeMinor: number;
+    expenseMinor: number;
+    balanceMinor: number;
+  }> = [];
+  for (let m = 1; m <= 12; m++) {
+    const { from, to } = monthRange(year, m);
+    const t = await getPeriodTotals(userId, from, to);
+    const inc = Number(t.incomeMinor);
+    const exp = Number(t.expenseMinor);
+    data.push({ month: m, incomeMinor: inc, expenseMinor: exp, balanceMinor: inc - exp });
+  }
 
   const totalIncome = data.reduce((s, d) => s + d.incomeMinor, 0) / 100;
   const totalExpense = data.reduce((s, d) => s + d.expenseMinor, 0) / 100;

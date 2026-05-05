@@ -2,18 +2,8 @@
 
 import { revalidateAfterSavings } from '@/lib/cache-tags';
 import { authedAction } from '@/lib/safe-action';
-import {
-  contributeToGoal,
-  createSavingsGoal,
-  deleteSavingsGoal,
-  updateSavingsGoal,
-} from './mutations';
-import {
-  contributeSchema,
-  deleteSavingsGoalSchema,
-  savingsGoalInputSchema,
-  updateSavingsGoalSchema,
-} from './schema';
+import { createSavingsGoal, deleteSavingsGoal, updateSavingsGoal } from './mutations';
+import { deleteSavingsGoalSchema, savingsGoalInputSchema, updateSavingsGoalSchema } from './schema';
 
 export const createSavingsGoalAction = authedAction
   .metadata({ actionName: 'createSavingsGoal' })
@@ -29,15 +19,6 @@ export const updateSavingsGoalAction = authedAction
   .inputSchema(updateSavingsGoalSchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await updateSavingsGoal(ctx.userId, parsedInput);
-    revalidateAfterSavings(ctx.userId);
-    return row;
-  });
-
-export const contributeToGoalAction = authedAction
-  .metadata({ actionName: 'contributeToGoal' })
-  .inputSchema(contributeSchema)
-  .action(async ({ parsedInput, ctx }) => {
-    const row = await contributeToGoal(ctx.userId, parsedInput);
     revalidateAfterSavings(ctx.userId);
     return row;
   });

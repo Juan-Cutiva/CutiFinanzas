@@ -4,7 +4,6 @@ export const categoryInputSchema = z.object({
   name: z.string().trim().min(1, 'El nombre es requerido').max(100, 'Máximo 100 caracteres'),
   icon: z.string().trim().min(1).max(64).default('Tag'),
   color: z.string().trim().min(1).max(32).default('var(--chart-1)'),
-  parentId: z.string().nullable().optional(),
   sortOrder: z.number().int().min(0).default(0),
 });
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { Trash2, Wallet } from 'lucide-react';
+import { CreditCard, PiggyBank, Trash2, Wallet } from 'lucide-react';
 import Link from 'next/link';
 import { useAction } from 'next-safe-action/hooks';
 import { useState } from 'react';
@@ -19,35 +19,55 @@ import {
 import { formatAmount } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import { archiveAccountAction } from '../actions';
-import { ACCOUNT_TYPE_LABELS } from '../schema';
+import { ACCOUNT_TYPE_LABELS, type AccountTypeCode } from '../schema';
 
-export interface AccountWithBalance {
+export interface AccountWithBalanceItem {
   id: string;
   name: string;
-  type: keyof typeof ACCOUNT_TYPE_LABELS;
+  type: AccountTypeCode;
   currency: string;
   institution: string | null;
-  balanceMinor: bigint;
+  realMinor: bigint;
+  projectedMinor: bigint;
+  creditLimitMinor: bigint | null;
 }
 
-export function AccountList({ accounts }: { accounts: AccountWithBalance[] }) {
-  const [pendingDelete, setPendingDelete] = useState<AccountWithBalance | null>(null);
+function iconFor(type: AccountTypeCode) {
+  if (type === 'credit_card') return CreditCard;
+  if (type === 'savings') return PiggyBank;
+  return Wallet;
+}
+
+export function AccountList({ accounts }: { accounts: AccountWithBalanceItem[] }) {
+  const [pendingDelete, setPendingDelete] = useState<AccountWithBalanceItem | null>(null);
   const { execute, isPending } = useAction(archiveAccountAction, {
     onSuccess: () => {
       toast.success('Cuenta archivada');
       setPendingDelete(null);
     },
-    onError: ({ error }) => {
-      toast.error(error.serverError ?? 'No se pudo archivar');
-    },
+    onError: ({ error }) => toast.error(error.serverError ?? 'No se pudo archivar'),
   });
 
   return (
     <>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {accounts.map((acc) => {
-          const balance = Number(acc.balanceMinor) / 100;
-          const positive = balance >= 0;
+          const isCC = acc.type === 'credit_card';
+          const balance = Number(acc.realMinor) / 100;
+          const projected = Number(acc.projectedMinor) / 100;
+          const showProjection = balance !== projected;
+          const Icon = iconFor(acc.type);
+          // Para CC: balance positivo = lo que debes (mostrar en rojo)
+          const balanceColor = isCC
+            ? balance > 0
+              ? 'text-amount-negative'
+              : 'text-amount-positive'
+            : balance >= 0
+              ? 'text-amount-positive'
+              : 'text-amount-negative';
+          const limitMajor = acc.creditLimitMinor ? Number(acc.creditLimitMinor) / 100 : null;
+          const available = isCC && limitMajor !== null ? Math.max(0, limitMajor - balance) : null;
+
           return (
             <Card
               key={acc.id}
@@ -60,7 +80,7 @@ export function AccountList({ accounts }: { accounts: AccountWithBalance[] }) {
                   aria-label={`Ver detalle de ${acc.name}`}
                 >
                   <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
-                    <Wallet className="size-5" aria-hidden />
+                    <Icon className="size-5" aria-hidden />
                   </div>
                   <div className="min-w-0">
                     <h3 className="truncate text-sm font-semibold">{acc.name}</h3>
@@ -77,12 +97,24 @@ export function AccountList({ accounts }: { accounts: AccountWithBalance[] }) {
                       ) : null}
                     </div>
                     <p
-                      className={`mt-2 font-mono tabular-nums text-base font-semibold ${
-                        positive ? 'text-amount-positive' : 'text-amount-negative'
-                      }`}
+                      className={`mt-2 font-mono tabular-nums text-base font-semibold ${balanceColor}`}
                     >
                       {formatAmount(balance, acc.currency as CurrencyCode)}
+                      {isCC && balance > 0 ? ' debe' : ''}
                     </p>
+                    {isCC && available !== null ? (
+                      <p className="text-xs text-muted-foreground">
+                        Cupo disponible {formatAmount(available, acc.currency as CurrencyCode)}
+                      </p>
+                    ) : null}
+                    {showProjection ? (
+                      <p className="text-xs text-muted-foreground">
+                        Proyectado fin de mes:{' '}
+                        <span className="font-mono tabular-nums">
+                          {formatAmount(projected, acc.currency as CurrencyCode)}
+                        </span>
+                      </p>
+                    ) : null}
                   </div>
                 </Link>
                 <div className="p-3">

@@ -2,18 +2,21 @@
 
 import { zodResolver } from '@hookform/resolvers/zod';
 import { useAction } from 'next-safe-action/hooks';
+import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
   Form,
   FormControl,
+  FormDescription,
   FormField,
   FormItem,
   FormLabel,
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   Select,
   SelectContent,
@@ -26,7 +29,6 @@ import { updateUserPreferencesAction } from '../actions';
 import {
   COMMON_LOCALES,
   COMMON_TIMEZONES,
-  PAY_FREQUENCY_LABELS,
   type UpdateUserPreferencesInput,
   updateUserPreferencesSchema,
 } from '../schema';
@@ -37,11 +39,15 @@ interface Props {
     defaultCurrency: string;
     locale: string;
     timezone: string;
-    payFrequency: 'weekly' | 'biweekly' | 'monthly';
+    payAnchorDates: number[];
   };
 }
 
 export function PreferencesForm({ defaults }: Props) {
+  const [anchorsRaw, setAnchorsRaw] = React.useState(
+    (defaults.payAnchorDates ?? [6, 21]).join(', '),
+  );
+
   const form = useForm<UpdateUserPreferencesInput>({
     resolver: zodResolver(updateUserPreferencesSchema),
     defaultValues: {
@@ -49,7 +55,7 @@ export function PreferencesForm({ defaults }: Props) {
       defaultCurrency: defaults.defaultCurrency,
       locale: defaults.locale,
       timezone: defaults.timezone,
-      payFrequency: defaults.payFrequency,
+      payAnchorDates: defaults.payAnchorDates ?? [6, 21],
     },
   });
 
@@ -58,12 +64,17 @@ export function PreferencesForm({ defaults }: Props) {
     onError: ({ error }) => toast.error(error.serverError ?? 'Error'),
   });
 
+  function onSubmit(data: UpdateUserPreferencesInput) {
+    const anchors = anchorsRaw
+      .split(',')
+      .map((s) => Number.parseInt(s.trim(), 10))
+      .filter((n) => Number.isFinite(n) && n >= 1 && n <= 31);
+    execute({ ...data, payAnchorDates: anchors });
+  }
+
   return (
     <Form {...form}>
-      <form
-        onSubmit={form.handleSubmit((data) => execute(data))}
-        className="grid gap-4 md:grid-cols-2"
-      >
+      <form onSubmit={form.handleSubmit(onSubmit)} className="grid gap-4 md:grid-cols-2">
         <FormField
           control={form.control}
           name="name"
@@ -128,30 +139,19 @@ export function PreferencesForm({ defaults }: Props) {
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="payFrequency"
-          render={({ field }) => (
-            <FormItem className="md:col-span-2">
-              <FormLabel>Frecuencia de pago</FormLabel>
-              <Select value={field.value} onValueChange={field.onChange}>
-                <FormControl>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {Object.entries(PAY_FREQUENCY_LABELS).map(([k, label]) => (
-                    <SelectItem key={k} value={k}>
-                      {label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="md:col-span-2 flex flex-col gap-2">
+          <Label htmlFor="anchors">Días de cobro</Label>
+          <Input
+            id="anchors"
+            placeholder="6, 21"
+            value={anchorsRaw}
+            onChange={(e) => setAnchorsRaw(e.target.value)}
+          />
+          <FormDescription>
+            Días del mes en que cobras (separados por coma). Determinan los cortes de quincena. Ej:{' '}
+            <code>6, 21</code> para cobro día 6 y día 21.
+          </FormDescription>
+        </div>
 
         <FormField
           control={form.control}

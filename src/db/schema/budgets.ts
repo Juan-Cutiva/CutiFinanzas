@@ -29,7 +29,6 @@ export const budgets = pgTable(
     period: budgetPeriod('period').notNull().default('monthly'),
     amountMinor: bigint('amount_minor', { mode: 'bigint' }).notNull(),
     currency: char('currency', { length: 3 }).notNull(),
-    rolloverEnabled: integer('rollover_enabled').notNull().default(0),
     isRecurring: boolean('is_recurring').notNull().default(true),
     notes: text('notes'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),

@@ -2,12 +2,13 @@ import { Target } from 'lucide-react';
 import type { Metadata } from 'next';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getOrCreateUser } from '@/db/queries/users';
-import { BudgetList } from '@/features/budgets/components/budget-list';
+import { BudgetList, type BudgetWithSpent } from '@/features/budgets/components/budget-list';
 import { CreateBudgetButton } from '@/features/budgets/components/create-budget-button';
 import { listBudgetsByMonth } from '@/features/budgets/queries';
 import { listCategoriesByUser } from '@/features/categories/queries';
-import { totalsByCategoryByMonth } from '@/features/transactions/queries';
+import { getCategoryExpenseTotals, monthRange } from '@/lib/accounting';
 import { dayjs, nowInTz } from '@/lib/format';
+import type { UserId } from '@/types/ids';
 
 export const metadata: Metadata = { title: 'Presupuestos' };
 export const dynamic = 'force-dynamic';
@@ -18,24 +19,25 @@ interface PageProps {
 
 export default async function PresupuestosPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
-  const userId = user.id as never;
+  const userId = user.id as UserId;
   const params = await searchParams;
   const now = nowInTz(user.timezone);
   const year = Number.parseInt(params.y ?? String(now.year()), 10);
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
   const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
 
-  const [budgets, categories, spentByCategory] = await Promise.all([
+  const { from, to } = monthRange(year, month);
+  const [budgets, categories, byCategory] = await Promise.all([
     listBudgetsByMonth(userId, year, month),
     listCategoriesByUser(userId),
-    totalsByCategoryByMonth(userId, year, month),
+    getCategoryExpenseTotals(userId, from, to),
   ]);
 
-  const items = budgets.map((b) => ({
+  const items: BudgetWithSpent[] = budgets.map((b) => ({
     id: b.id,
-    amountMinor: b.amountMinor,
+    amountMinor: b.amountMinor as bigint,
     currency: b.currency,
-    spentMinor: spentByCategory.find((s) => s.categoryId === b.categoryId)?.total ?? 0,
+    spentMinor: Number(byCategory.find((s) => s.categoryId === b.categoryId)?.totalMinor ?? 0n),
     year: b.year,
     month: b.month,
     notes: b.notes,

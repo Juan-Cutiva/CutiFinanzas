@@ -9,13 +9,14 @@ import { SeedDefaultCategoriesButton } from '@/features/categories/components/se
 import { listCategoriesByUser } from '@/features/categories/queries';
 import { PushToggle } from '@/features/notifications/components/push-toggle';
 import { PreferencesForm } from '@/features/settings/components/preferences-form';
+import type { UserId } from '@/types/ids';
 
 export const metadata: Metadata = { title: 'Ajustes' };
 export const dynamic = 'force-dynamic';
 
 export default async function AjustesPage() {
   const user = await getOrCreateUser();
-  const categories = await listCategoriesByUser(user.id as never);
+  const categories = await listCategoriesByUser(user.id as UserId);
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
@@ -27,9 +28,7 @@ export default async function AjustesPage() {
       <Card>
         <CardHeader>
           <CardTitle>Perfil y preferencias</CardTitle>
-          <CardDescription>
-            Define tu moneda, idioma y zona horaria predeterminados.
-          </CardDescription>
+          <CardDescription>Define tu moneda, idioma, zona horaria y días de cobro.</CardDescription>
         </CardHeader>
         <CardContent>
           <PreferencesForm
@@ -38,7 +37,7 @@ export default async function AjustesPage() {
               defaultCurrency: user.defaultCurrency,
               locale: user.locale,
               timezone: user.timezone,
-              payFrequency: user.payFrequency as 'weekly' | 'biweekly' | 'monthly',
+              payAnchorDates: user.payAnchorDates ?? [6, 21],
             }}
           />
           <p className="mt-4 text-xs text-muted-foreground">

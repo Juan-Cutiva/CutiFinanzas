@@ -1,8 +1,9 @@
 import 'server-only';
 import dayjs from 'dayjs';
-import { and, between, eq, sql, sum } from 'drizzle-orm';
+import { and, between, eq, inArray, sum } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { transactions } from '@/db/schema';
+import { EXPENSE_KINDS, type TransactionKind } from '@/lib/accounting';
 import type { UserId } from '@/types/ids';
 
 export interface CategoryInsight {
@@ -13,13 +14,6 @@ export interface CategoryInsight {
   pctChange: number;
   status: 'over' | 'on_track' | 'under';
 }
-
-const _EXPENSE_KINDS = [
-  'expense_fixed',
-  'expense_variable',
-  'debt_payment',
-  'savings_contribution',
-];
 
 export async function categoryInsights(
   userId: UserId,
@@ -33,8 +27,6 @@ export async function categoryInsights(
   const baselineFrom = monthStart.subtract(monthsBack, 'month').format('YYYY-MM-DD');
   const baselineTo = monthStart.subtract(1, 'day').format('YYYY-MM-DD');
 
-  const whereExpense = sql`${transactions.kind} IN ('expense_fixed', 'expense_variable', 'debt_payment', 'savings_contribution')`;
-
   const [currentRows, baselineRows] = await Promise.all([
     db
       .select({
@@ -45,8 +37,9 @@ export async function categoryInsights(
       .where(
         and(
           eq(transactions.userId, userId),
-          between(transactions.occurredAt, currentFrom, currentTo),
-          whereExpense,
+          eq(transactions.isPaid, true),
+          inArray(transactions.kind, EXPENSE_KINDS as TransactionKind[]),
+          between(transactions.transactionDate, currentFrom, currentTo),
         ),
       )
       .groupBy(transactions.categoryId),
@@ -59,8 +52,9 @@ export async function categoryInsights(
       .where(
         and(
           eq(transactions.userId, userId),
-          between(transactions.occurredAt, baselineFrom, baselineTo),
-          whereExpense,
+          eq(transactions.isPaid, true),
+          inArray(transactions.kind, EXPENSE_KINDS as TransactionKind[]),
+          between(transactions.transactionDate, baselineFrom, baselineTo),
         ),
       )
       .groupBy(transactions.categoryId),

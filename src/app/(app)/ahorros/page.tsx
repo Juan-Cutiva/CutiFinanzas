@@ -2,21 +2,31 @@ import { PiggyBank } from 'lucide-react';
 import type { Metadata } from 'next';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getOrCreateUser } from '@/db/queries/users';
-import { listAccountsByUser } from '@/features/accounts/queries';
 import { CreateSavingsGoalButton } from '@/features/savings/components/create-savings-button';
-import { SavingsList } from '@/features/savings/components/savings-list';
-import { listSavingsGoals } from '@/features/savings/queries';
+import { type SavingsGoalItem, SavingsList } from '@/features/savings/components/savings-list';
+import { listSavingsGoalsForDashboard } from '@/features/savings/queries';
+import { nowInTz } from '@/lib/format';
+import type { UserId } from '@/types/ids';
 
 export const metadata: Metadata = { title: 'Metas de ahorro' };
 export const dynamic = 'force-dynamic';
 
 export default async function AhorrosPage() {
   const user = await getOrCreateUser();
-  const userId = user.id as never;
-  const [goals, accounts] = await Promise.all([
-    listSavingsGoals(userId),
-    listAccountsByUser(userId),
-  ]);
+  const userId = user.id as UserId;
+  const today = nowInTz(user.timezone).format('YYYY-MM-DD');
+
+  const goals = await listSavingsGoalsForDashboard(userId, today);
+  const items: SavingsGoalItem[] = goals.map((g) => ({
+    id: g.id,
+    name: g.name,
+    targetAmountMinor: g.targetAmountMinor,
+    currentAmountMinor: g.currentAmountMinor,
+    monthlyContributionMinor: g.monthlyContributionMinor,
+    currency: g.currency,
+    color: g.color,
+    targetDate: g.targetDate,
+  }));
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
@@ -24,23 +34,20 @@ export default async function AhorrosPage() {
         <div>
           <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Metas de ahorro</h2>
           <p className="text-sm text-muted-foreground">
-            Define objetivos y aporta cada mes para alcanzarlos.
+            Define objetivos. Aporta con movimientos tipo "Aporte a meta de ahorro".
           </p>
         </div>
         <CreateSavingsGoalButton defaultCurrency={user.defaultCurrency} />
       </header>
 
-      {goals.length === 0 ? (
+      {items.length === 0 ? (
         <EmptyState
           icon={PiggyBank}
           title="¿Cuál es tu próxima meta?"
           description="Fondo de emergencia, viaje, computador nuevo… empieza por una y agrega más después."
         />
       ) : (
-        <SavingsList
-          items={goals}
-          accounts={accounts.map((a) => ({ id: a.id, name: a.name, currency: a.currency }))}
-        />
+        <SavingsList items={items} />
       )}
     </div>
   );

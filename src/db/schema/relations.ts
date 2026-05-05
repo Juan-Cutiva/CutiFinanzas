@@ -22,28 +22,26 @@ export const usersRelations = relations(users, ({ many }) => ({
 
 export const accountsRelations = relations(accounts, ({ one, many }) => ({
   user: one(users, { fields: [accounts.userId], references: [users.id] }),
-  transactions: many(transactions),
+  transactions: many(transactions, { relationName: 'tx_account' }),
 }));
 
 export const categoriesRelations = relations(categories, ({ one, many }) => ({
   user: one(users, { fields: [categories.userId], references: [users.id] }),
   transactions: many(transactions),
   budgets: many(budgets),
-  parent: one(categories, {
-    fields: [categories.parentId],
-    references: [categories.id],
-    relationName: 'parent_child',
-  }),
-  children: many(categories, { relationName: 'parent_child' }),
 }));
 
 export const transactionsRelations = relations(transactions, ({ one }) => ({
   user: one(users, { fields: [transactions.userId], references: [users.id] }),
-  account: one(accounts, { fields: [transactions.accountId], references: [accounts.id] }),
-  transferAccount: one(accounts, {
-    fields: [transactions.transferAccountId],
+  account: one(accounts, {
+    fields: [transactions.accountId],
     references: [accounts.id],
-    relationName: 'transfer',
+    relationName: 'tx_account',
+  }),
+  counterAccount: one(accounts, {
+    fields: [transactions.counterAccountId],
+    references: [accounts.id],
+    relationName: 'tx_counter_account',
   }),
   category: one(categories, {
     fields: [transactions.categoryId],
@@ -66,9 +64,19 @@ export const transactionsRelations = relations(transactions, ({ one }) => ({
 export const recurringRulesRelations = relations(recurringRules, ({ one, many }) => ({
   user: one(users, { fields: [recurringRules.userId], references: [users.id] }),
   account: one(accounts, { fields: [recurringRules.accountId], references: [accounts.id] }),
+  counterAccount: one(accounts, {
+    fields: [recurringRules.counterAccountId],
+    references: [accounts.id],
+    relationName: 'rr_counter_account',
+  }),
   category: one(categories, {
     fields: [recurringRules.categoryId],
     references: [categories.id],
+  }),
+  debt: one(debts, { fields: [recurringRules.debtId], references: [debts.id] }),
+  savingsGoal: one(savingsGoals, {
+    fields: [recurringRules.savingsGoalId],
+    references: [savingsGoals.id],
   }),
   instances: many(transactions),
 }));
@@ -80,7 +88,6 @@ export const budgetsRelations = relations(budgets, ({ one }) => ({
 
 export const debtsRelations = relations(debts, ({ one, many }) => ({
   user: one(users, { fields: [debts.userId], references: [users.id] }),
-  account: one(accounts, { fields: [debts.accountId], references: [accounts.id] }),
   payments: many(transactions),
 }));
 

@@ -4,13 +4,13 @@ import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from '@/components/ui/drawer';
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+  ResponsiveDialogTrigger,
+} from '@/components/ui/responsive-dialog';
 import { BudgetForm } from './budget-form';
 
 interface Props {
@@ -23,21 +23,21 @@ interface Props {
 export function CreateBudgetButton({ categories, year, month, defaultCurrency }: Props) {
   const [open, setOpen] = useState(false);
   return (
-    <Drawer open={open} onOpenChange={setOpen}>
-      <DrawerTrigger asChild>
+    <ResponsiveDialog open={open} onOpenChange={setOpen}>
+      <ResponsiveDialogTrigger asChild>
         <Button>
           <Plus className="size-4" aria-hidden />
           Nuevo presupuesto
         </Button>
-      </DrawerTrigger>
-      <DrawerContent>
-        <DrawerHeader>
-          <DrawerTitle>Asignar presupuesto</DrawerTitle>
-          <DrawerDescription>
+      </ResponsiveDialogTrigger>
+      <ResponsiveDialogContent>
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>Asignar presupuesto</ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>
             Define cuánto puedes gastar en una categoría este mes.
-          </DrawerDescription>
-        </DrawerHeader>
-        <div className="px-4 pb-6">
+          </ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
+        <div className="px-4 pb-6 md:px-0 md:pb-0">
           <BudgetForm
             categories={categories}
             year={year}
@@ -46,7 +46,7 @@ export function CreateBudgetButton({ categories, year, month, defaultCurrency }:
             onSuccess={() => setOpen(false)}
           />
         </div>
-      </DrawerContent>
-    </Drawer>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }

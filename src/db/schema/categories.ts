@@ -12,13 +12,12 @@ export const categories = pgTable(
     name: varchar('name', { length: 100 }).notNull(),
     icon: varchar('icon', { length: 64 }).notNull().default('Tag'),
     color: varchar('color', { length: 32 }).notNull().default('var(--chart-1)'),
-    parentId: text('parent_id'),
     sortOrder: integer('sort_order').notNull().default(0),
     archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().default(sql`now()`),
   },
-  (t) => [index('idx_categories_user').on(t.userId), index('idx_categories_parent').on(t.parentId)],
+  (t) => [index('idx_categories_user').on(t.userId)],
 );
 
 export type CategoryRow = typeof categories.$inferSelect;

@@ -12,6 +12,14 @@ import {
 import { accountType } from './enums';
 import { users } from './users';
 
+/**
+ * Cuentas del usuario. NO se almacena balance — se deriva de transactions.
+ *
+ * - cash, checking, savings: cuentas asset. Balance = (saldo inicial + suma de movimientos).
+ * - credit_card: línea revolvente. "Balance" = saldo pendiente con el banco (cc_charge − cc_payment).
+ *   El initialBalanceMinor representa la deuda pre-existente al empezar a registrar en la app (0 normalmente).
+ *   Tiene creditLimit para mostrar cupo disponible.
+ */
 export const accounts = pgTable(
   'accounts',
   {

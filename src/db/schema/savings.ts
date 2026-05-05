@@ -1,19 +1,13 @@
 import { sql } from 'drizzle-orm';
-import {
-  bigint,
-  char,
-  date,
-  index,
-  numeric,
-  pgTable,
-  text,
-  timestamp,
-  varchar,
-} from 'drizzle-orm/pg-core';
+import { bigint, char, date, index, pgTable, text, timestamp, varchar } from 'drizzle-orm/pg-core';
 import { accounts } from './accounts';
 import { goalStatus } from './enums';
 import { users } from './users';
 
+/**
+ * Metas de ahorro. El monto acumulado NO se almacena — se calcula:
+ *   SUM(transactions.amount WHERE kind='savings_contribution' AND savingsGoalId=X)
+ */
 export const savingsGoals = pgTable(
   'savings_goals',
   {
@@ -24,14 +18,10 @@ export const savingsGoals = pgTable(
     accountId: text('account_id').references(() => accounts.id, { onDelete: 'set null' }),
     name: varchar('name', { length: 200 }).notNull(),
     targetAmountMinor: bigint('target_amount_minor', { mode: 'bigint' }).notNull(),
-    currentAmountMinor: bigint('current_amount_minor', { mode: 'bigint' })
-      .notNull()
-      .default(sql`0`),
     currency: char('currency', { length: 3 }).notNull(),
     monthlyContributionMinor: bigint('monthly_contribution_minor', { mode: 'bigint' })
       .notNull()
       .default(sql`0`),
-    autoAllocatePercent: numeric('auto_allocate_percent', { precision: 5, scale: 2 }),
     startDate: date('start_date').notNull(),
     targetDate: date('target_date'),
     icon: varchar('icon', { length: 64 }).notNull().default('PiggyBank'),

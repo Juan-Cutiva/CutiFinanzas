@@ -4,36 +4,36 @@ import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-  DrawerTrigger,
-} from '@/components/ui/drawer';
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+  ResponsiveDialogTrigger,
+} from '@/components/ui/responsive-dialog';
 import { AccountForm } from './account-form';
 
 export function CreateAccountButton({ defaultCurrency }: { defaultCurrency: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <Drawer open={open} onOpenChange={setOpen}>
-      <DrawerTrigger asChild>
+    <ResponsiveDialog open={open} onOpenChange={setOpen}>
+      <ResponsiveDialogTrigger asChild>
         <Button>
           <Plus className="size-4" aria-hidden />
           Nueva cuenta
         </Button>
-      </DrawerTrigger>
-      <DrawerContent>
-        <DrawerHeader>
-          <DrawerTitle>Crear cuenta</DrawerTitle>
-          <DrawerDescription>
+      </ResponsiveDialogTrigger>
+      <ResponsiveDialogContent>
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>Crear cuenta</ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>
             Las cuentas agrupan tus movimientos por billetera, banco o tarjeta.
-          </DrawerDescription>
-        </DrawerHeader>
-        <div className="px-4 pb-6">
+          </ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
+        <div className="px-4 pb-6 md:px-0 md:pb-0">
           <AccountForm defaultCurrency={defaultCurrency} onSuccess={() => setOpen(false)} />
         </div>
-      </DrawerContent>
-    </Drawer>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }

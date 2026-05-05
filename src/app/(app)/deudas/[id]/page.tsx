@@ -8,28 +8,24 @@ import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Progress } from '@/components/ui/progress';
 import { getOrCreateUser } from '@/db/queries/users';
-import { listAccountsByUser } from '@/features/accounts/queries';
-import { listCategoriesByUser } from '@/features/categories/queries';
-import { DebtUsagesList } from '@/features/debts/components/debt-usages-list';
-import { RecordDebtUsageButton } from '@/features/debts/components/record-debt-usage-button';
 import {
   annualToMonthlyRate,
   calculateRemainingMonths,
   debtProgress,
 } from '@/features/debts/domain';
+import { getDebtForDetail } from '@/features/debts/queries';
 import {
-  getDebtById,
-  getDebtPayments,
-  getDebtProjectedBalance,
-  getDebtUsages,
-  listDebtsByUser,
-} from '@/features/debts/queries';
-import { listSavingsGoals } from '@/features/savings/queries';
-import { TransactionList } from '@/features/transactions/components/transaction-list';
+  TransactionList,
+  type TxListItem,
+} from '@/features/transactions/components/transaction-list';
+import { listPaymentsForDebt } from '@/features/transactions/queries';
+import { monthRange } from '@/lib/accounting';
+import type { TransactionKind } from '@/lib/accounting/shared';
 import { dayjs, formatAmount, formatDate, nowInTz } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
+import type { UserId } from '@/types/ids';
 
-export const metadata: Metadata = { title: 'Detalle de deuda' };
+export const metadata: Metadata = { title: 'Detalle de préstamo' };
 export const dynamic = 'force-dynamic';
 
 interface Props {
@@ -41,59 +37,60 @@ export default async function DebtDetailPage({ params, searchParams }: Props) {
   const { id } = await params;
   const sp = await searchParams;
   const user = await getOrCreateUser();
-  const debt = await getDebtById(user.id as never, id);
-  if (!debt) notFound();
+  const userId = user.id as UserId;
 
   const now = nowInTz(user.timezone);
   const year = Number.parseInt(sp.y ?? String(now.year()), 10);
   const month = Number.parseInt(sp.m ?? String(now.month() + 1), 10);
-  const lastDay = new Date(year, month, 0).getDate();
-  const asOfIso = `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+  const today = now.format('YYYY-MM-DD');
+  const { to } = monthRange(year, month);
   const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
 
-  const todayIso = now.format('YYYY-MM-DD');
-  const userId = user.id as never;
-  const [payments, usages, categories, accountsRaw, debtsRaw, goalsRaw, projection, today] =
-    await Promise.all([
-      getDebtPayments(userId, debt.id),
-      getDebtUsages(userId, debt.id),
-      listCategoriesByUser(userId),
-      listAccountsByUser(userId),
-      listDebtsByUser(userId),
-      listSavingsGoals(userId),
-      getDebtProjectedBalance(userId, debt.id, asOfIso),
-      getDebtProjectedBalance(userId, debt.id, todayIso),
-    ]);
-  const accounts = accountsRaw.map((a) => ({
-    id: a.id,
-    name: a.name,
-    currency: a.currency,
-    type: a.type,
-  }));
-  const debts = debtsRaw.map((d) => ({ id: d.id, name: d.name, currency: d.currency }));
-  const savingsGoals = goalsRaw.map((g) => ({ id: g.id, name: g.name, currency: g.currency }));
+  const [debtState, payments] = await Promise.all([
+    getDebtForDetail(userId, id, to, today),
+    listPaymentsForDebt(userId, id),
+  ]);
+  if (!debtState) notFound();
 
-  const initial = Number(projection.initialAmountMinor) / 100;
-  const balance = Number(projection.currentBalanceMinor) / 100;
-  const balanceToday = Number(today.currentBalanceMinor) / 100;
-  const showProjection = asOfIso > todayIso && balanceToday !== balance;
-  const monthly = Number(debt.monthlyPaymentMinor) / 100;
-  const monthlyRate = annualToMonthlyRate(
-    debt.interestRateAnnual ? Number(debt.interestRateAnnual) : null,
-  );
-  const monthsLeft = calculateRemainingMonths(balance, monthlyRate, monthly);
-  const progress = debtProgress(initial, balance);
-  const totalPaid = Number(projection.totalPaidMinor) / 100;
+  const principal = Number(debtState.principalMinor) / 100;
+  const realBalance = Number(debtState.realBalanceMinor) / 100;
+  const projectedBalance = Number(debtState.projectedBalanceMinor) / 100;
+  const showProjection = realBalance !== projectedBalance;
+  const monthly = Number(debtState.monthlyPaymentMinor) / 100;
+  const monthlyRate = annualToMonthlyRate(debtState.interestRateAnnual);
+  const monthsLeft = calculateRemainingMonths(realBalance, monthlyRate, monthly);
+  const progress = debtProgress(principal, realBalance);
+  const totalPaid = Number(debtState.totalPaidMinor) / 100;
+
+  const itemsForList: TxListItem[] = payments.map((t) => ({
+    id: t.id,
+    kind: t.kind as TransactionKind,
+    amountMinor: t.amountMinor as bigint,
+    currency: t.currency,
+    transactionDate: t.transactionDate,
+    description: t.description,
+    notes: t.notes,
+    accountId: t.accountId,
+    counterAccountId: t.counterAccountId,
+    categoryId: t.categoryId,
+    debtId: t.debtId,
+    savingsGoalId: t.savingsGoalId,
+    receiptUrl: t.receiptUrl,
+    isPaid: t.isPaid,
+    recurringRuleId: t.recurringRuleId,
+    account: t.account ? { name: t.account.name, type: t.account.type } : null,
+    counterAccount: null,
+    category: null,
+  }));
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
-      <div className="flex items-center justify-between gap-2">
+      <div>
         <Button asChild variant="ghost" size="sm" className="-ml-2 h-8">
           <Link href="/deudas">
-            <ArrowLeft className="mr-1 size-4" /> Volver a deudas
+            <ArrowLeft className="mr-1 size-4" /> Volver a préstamos
           </Link>
         </Button>
-        <RecordDebtUsageButton debtId={debt.id} debtName={debt.name} />
       </div>
 
       <Card>
@@ -104,10 +101,12 @@ export default async function DebtDetailPage({ params, searchParams }: Props) {
                 <CreditCard className="size-6" aria-hidden />
               </div>
               <div className="min-w-0">
-                <h2 className="text-xl font-semibold tracking-tight md:text-2xl">{debt.name}</h2>
+                <h2 className="text-xl font-semibold tracking-tight md:text-2xl">
+                  {debtState.name}
+                </h2>
                 <p className="text-xs text-muted-foreground">
-                  Inicio {formatDate(debt.startDate)}
-                  {debt.endDate ? ` · fin previsto ${formatDate(debt.endDate)}` : ''}
+                  Inicio {formatDate(debtState.startDate)}
+                  {debtState.endDate ? ` · fin previsto ${formatDate(debtState.endDate)}` : ''}
                 </p>
               </div>
             </div>
@@ -121,20 +120,18 @@ export default async function DebtDetailPage({ params, searchParams }: Props) {
           </div>
 
           <div>
-            <p className="text-xs uppercase tracking-wide text-muted-foreground">
-              {showProjection ? `Saldo proyectado · fin de ${monthLabel}` : 'Saldo actual'}
-            </p>
+            <p className="text-xs uppercase tracking-wide text-muted-foreground">Saldo actual</p>
             <p className="font-mono tabular-nums text-3xl font-semibold tracking-tight text-amount-negative">
-              {formatAmount(balance, debt.currency as CurrencyCode)}
+              {formatAmount(realBalance, debtState.currency as CurrencyCode)}
             </p>
             <p className="text-xs text-muted-foreground">
-              de {formatAmount(initial, debt.currency as CurrencyCode)} iniciales
+              de {formatAmount(principal, debtState.currency as CurrencyCode)} iniciales
             </p>
             {showProjection ? (
               <p className="mt-1 text-xs text-muted-foreground">
-                Saldo actual:{' '}
+                Saldo estimado fin de {monthLabel}:{' '}
                 <span className="font-mono tabular-nums font-medium text-foreground">
-                  {formatAmount(balanceToday, debt.currency as CurrencyCode)}
+                  {formatAmount(projectedBalance, debtState.currency as CurrencyCode)}
                 </span>{' '}
                 — los descuentos por cuotas fijas se aplican al pasar la fecha de pago.
               </p>
@@ -145,7 +142,7 @@ export default async function DebtDetailPage({ params, searchParams }: Props) {
             <Progress value={Math.round(progress * 100)} />
             <p className="mt-1 text-xs text-muted-foreground">
               {Math.round(progress * 100)}% pagado · cuota{' '}
-              {formatAmount(monthly, debt.currency as CurrencyCode)}/mes
+              {formatAmount(monthly, debtState.currency as CurrencyCode)}/mes
             </p>
           </div>
 
@@ -153,53 +150,38 @@ export default async function DebtDetailPage({ params, searchParams }: Props) {
             <div>
               <p className="text-xs text-muted-foreground">Pagado a la fecha</p>
               <p className="font-mono tabular-nums font-semibold">
-                {formatAmount(totalPaid, debt.currency as CurrencyCode)}
+                {formatAmount(totalPaid, debtState.currency as CurrencyCode)}
               </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Cuotas pagadas</p>
               <p className="font-mono tabular-nums font-semibold">
-                {projection.paidInstallments}
-                {debt.totalInstallments ? ` / ${debt.totalInstallments}` : ''}
+                {debtState.paidInstallments}
+                {debtState.totalInstallments ? ` / ${debtState.totalInstallments}` : ''}
               </p>
             </div>
             <div>
               <p className="text-xs text-muted-foreground">Tasa anual</p>
               <p className="font-mono tabular-nums font-semibold">
-                {debt.interestRateAnnual ? `${Number(debt.interestRateAnnual).toFixed(2)}%` : '—'}
+                {debtState.interestRateAnnual ? `${debtState.interestRateAnnual.toFixed(2)}%` : '—'}
               </p>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {usages.length > 0 ? (
-        <section className="space-y-3">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Aumentos de saldo ({usages.length})
-          </h3>
-          <DebtUsagesList items={usages as never} />
-        </section>
-      ) : null}
-
       <section className="space-y-3">
         <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Historial de pagos ({payments.length})
+          Historial de pagos ({itemsForList.length})
         </h3>
-        {payments.length === 0 ? (
+        {itemsForList.length === 0 ? (
           <EmptyState
             icon={CreditCard}
             title="Sin pagos registrados"
-            description="Cuando hagas un pago a esta deuda aparecerá aquí."
+            description="Cuando hagas un pago a este préstamo aparecerá aquí."
           />
         ) : (
-          <TransactionList
-            items={payments as never}
-            accounts={accounts}
-            categories={categories}
-            debts={debts}
-            savingsGoals={savingsGoals}
-          />
+          <TransactionList items={itemsForList} />
         )}
       </section>
     </div>

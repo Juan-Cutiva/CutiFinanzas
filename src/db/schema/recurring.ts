@@ -18,6 +18,19 @@ import { recurrenceFrequency, transactionKind } from './enums';
 import { savingsGoals } from './savings';
 import { users } from './users';
 
+/**
+ * Reglas recurrentes versionadas.
+ *
+ * Patrón "el pasado es inmutable":
+ * - Editar una regla activa NO modifica la fila — se cierra (set endDate = última fecha vigente)
+ *   y se crea una nueva regla con startDate = primera fecha del cambio. La nueva regla guarda
+ *   `supersedesId` apuntando a la cerrada para trazabilidad.
+ * - Las transacciones materializadas viven en la tabla `transactions` y son inmutables al
+ *   cambio de regla (si quieres editar una ocurrencia puntual, editas la fila concreta).
+ *
+ * El cron solo materializa las ocurrencias cuya fecha sea ≤ today AND ≥ startDate AND
+ * (endDate IS NULL OR fecha ≤ endDate) AND isActive.
+ */
 export const recurringRules = pgTable(
   'recurring_rules',
   {
@@ -28,7 +41,7 @@ export const recurringRules = pgTable(
     accountId: text('account_id')
       .notNull()
       .references(() => accounts.id, { onDelete: 'cascade' }),
-    transferAccountId: text('transfer_account_id').references(() => accounts.id, {
+    counterAccountId: text('counter_account_id').references(() => accounts.id, {
       onDelete: 'set null',
     }),
     categoryId: text('category_id').references(() => categories.id, { onDelete: 'set null' }),
@@ -47,13 +60,16 @@ export const recurringRules = pgTable(
     endDate: date('end_date'),
     nextOccurrenceDate: date('next_occurrence_date').notNull(),
     isActive: boolean('is_active').notNull().default(true),
+    supersedesId: text('supersedes_id'),
     notes: text('notes'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().default(sql`now()`),
   },
   (t) => [
     index('idx_recurring_user').on(t.userId),
+    index('idx_recurring_active').on(t.userId, t.isActive),
     index('idx_recurring_next').on(t.nextOccurrenceDate, t.isActive),
+    index('idx_recurring_account').on(t.accountId),
   ],
 );
 

@@ -4,26 +4,24 @@ import { revalidateAfterTransaction } from '@/lib/cache-tags';
 import { authedAction } from '@/lib/safe-action';
 import {
   createTransaction,
-  deleteRecurringTransaction,
+  deleteRecurring,
   deleteTransaction,
   togglePaid,
-  updateRecurringTransaction,
+  updateRecurring,
   updateTransaction,
-  updateTransactionFull,
 } from './mutations';
 import {
-  deleteRecurringTransactionSchema,
+  createTransactionSchema,
+  deleteRecurringSchema,
   deleteTransactionSchema,
   togglePaidSchema,
-  transactionInputSchema,
-  updateRecurringTransactionSchema,
-  updateTransactionFullSchema,
+  updateRecurringSchema,
   updateTransactionSchema,
 } from './schema';
 
 export const createTransactionAction = authedAction
   .metadata({ actionName: 'createTransaction' })
-  .inputSchema(transactionInputSchema)
+  .inputSchema(createTransactionSchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await createTransaction(ctx.userId, parsedInput);
     revalidateAfterTransaction(ctx.userId);
@@ -39,11 +37,11 @@ export const updateTransactionAction = authedAction
     return row;
   });
 
-export const updateRecurringTransactionAction = authedAction
-  .metadata({ actionName: 'updateRecurringTransaction' })
-  .inputSchema(updateRecurringTransactionSchema)
+export const updateRecurringAction = authedAction
+  .metadata({ actionName: 'updateRecurring' })
+  .inputSchema(updateRecurringSchema)
   .action(async ({ parsedInput, ctx }) => {
-    const row = await updateRecurringTransaction(ctx.userId, parsedInput);
+    const row = await updateRecurring(ctx.userId, parsedInput);
     revalidateAfterTransaction(ctx.userId);
     return row;
   });
@@ -57,29 +55,20 @@ export const togglePaidAction = authedAction
     return row;
   });
 
-export const updateTransactionFullAction = authedAction
-  .metadata({ actionName: 'updateTransactionFull' })
-  .inputSchema(updateTransactionFullSchema)
-  .action(async ({ parsedInput, ctx }) => {
-    const row = await updateTransactionFull(ctx.userId, parsedInput);
-    revalidateAfterTransaction(ctx.userId);
-    return row;
-  });
-
-export const deleteRecurringTransactionAction = authedAction
-  .metadata({ actionName: 'deleteRecurringTransaction' })
-  .inputSchema(deleteRecurringTransactionSchema)
-  .action(async ({ parsedInput, ctx }) => {
-    const row = await deleteRecurringTransaction(ctx.userId, parsedInput);
-    revalidateAfterTransaction(ctx.userId);
-    return row;
-  });
-
 export const deleteTransactionAction = authedAction
   .metadata({ actionName: 'deleteTransaction' })
   .inputSchema(deleteTransactionSchema)
   .action(async ({ parsedInput, ctx }) => {
     await deleteTransaction(ctx.userId, parsedInput.id);
+    revalidateAfterTransaction(ctx.userId);
+    return { ok: true };
+  });
+
+export const deleteRecurringAction = authedAction
+  .metadata({ actionName: 'deleteRecurring' })
+  .inputSchema(deleteRecurringSchema)
+  .action(async ({ parsedInput, ctx }) => {
+    await deleteRecurring(ctx.userId, parsedInput);
     revalidateAfterTransaction(ctx.userId);
     return { ok: true };
   });

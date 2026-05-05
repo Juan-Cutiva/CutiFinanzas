@@ -4,9 +4,10 @@ import 'dayjs/locale/es';
 import { type NextRequest, NextResponse } from 'next/server';
 import { getOrCreateUser } from '@/db/queries/users';
 import { type YearlyReportData, YearlyReportPDF } from '@/features/reports/pdf/yearly-report';
-import { totalsByMonthForYear } from '@/features/transactions/queries';
+import { getPeriodTotals, monthRange } from '@/lib/accounting';
 import { nowInTz } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
+import type { UserId } from '@/types/ids';
 
 dayjs.locale('es');
 
@@ -15,14 +16,26 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(req: NextRequest) {
   const user = await getOrCreateUser();
-  const userId = user.id as never;
+  const userId = user.id as UserId;
   const url = new URL(req.url);
   const year = Number.parseInt(
     url.searchParams.get('year') ?? String(nowInTz(user.timezone).year()),
     10,
   );
 
-  const months = await totalsByMonthForYear(userId, year);
+  const months: YearlyReportData['months'] = [];
+  for (let m = 1; m <= 12; m++) {
+    const { from, to } = monthRange(year, m);
+    const totals = await getPeriodTotals(userId, from, to);
+    const incomeMinor = Number(totals.incomeMinor);
+    const expenseMinor = Number(totals.expenseMinor);
+    months.push({
+      month: m,
+      incomeMinor,
+      expenseMinor,
+      balanceMinor: incomeMinor - expenseMinor,
+    });
+  }
 
   const data: YearlyReportData = {
     year,

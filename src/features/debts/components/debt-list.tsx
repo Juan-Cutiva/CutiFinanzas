@@ -25,11 +25,12 @@ import { annualToMonthlyRate, calculateRemainingMonths, debtProgress } from '../
 export interface DebtItem {
   id: string;
   name: string;
-  initialAmountMinor: bigint;
-  currentBalanceMinor: bigint;
+  principalMinor: bigint;
+  realBalanceMinor: bigint;
+  projectedBalanceMinor: bigint;
   currency: string;
   monthlyPaymentMinor: bigint;
-  interestRateAnnual: string | null;
+  interestRateAnnual: number | null;
 }
 
 export function DebtList({ items }: { items: DebtItem[] }) {
@@ -46,14 +47,14 @@ export function DebtList({ items }: { items: DebtItem[] }) {
     <>
       <div className="grid gap-3 sm:grid-cols-2">
         {items.map((d) => {
-          const initial = Number(d.initialAmountMinor) / 100;
-          const balance = Number(d.currentBalanceMinor) / 100;
+          const principal = Number(d.principalMinor) / 100;
+          const realBalance = Number(d.realBalanceMinor) / 100;
+          const projectedBalance = Number(d.projectedBalanceMinor) / 100;
           const monthly = Number(d.monthlyPaymentMinor) / 100;
-          const monthlyRate = annualToMonthlyRate(
-            d.interestRateAnnual ? Number(d.interestRateAnnual) : null,
-          );
-          const monthsLeft = calculateRemainingMonths(balance, monthlyRate, monthly);
-          const progress = debtProgress(initial, balance);
+          const monthlyRate = annualToMonthlyRate(d.interestRateAnnual);
+          const monthsLeft = calculateRemainingMonths(realBalance, monthlyRate, monthly);
+          const progress = debtProgress(principal, realBalance);
+          const showProjection = realBalance !== projectedBalance;
 
           return (
             <Card key={d.id} className="transition-colors hover:border-primary/40">
@@ -66,11 +67,19 @@ export function DebtList({ items }: { items: DebtItem[] }) {
                   >
                     <h3 className="text-sm font-semibold">{d.name}</h3>
                     <p className="font-mono tabular-nums text-2xl font-semibold tracking-tight">
-                      {formatAmount(balance, d.currency as CurrencyCode)}
+                      {formatAmount(realBalance, d.currency as CurrencyCode)}
                     </p>
                     <p className="text-xs text-muted-foreground">
-                      de {formatAmount(initial, d.currency as CurrencyCode)} iniciales
+                      de {formatAmount(principal, d.currency as CurrencyCode)} iniciales
                     </p>
+                    {showProjection ? (
+                      <p className="text-xs text-muted-foreground">
+                        Estimado fin de mes:{' '}
+                        <span className="font-mono tabular-nums">
+                          {formatAmount(projectedBalance, d.currency as CurrencyCode)}
+                        </span>
+                      </p>
+                    ) : null}
                   </Link>
                   <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                     {monthsLeft !== null && monthsLeft > 0 ? (

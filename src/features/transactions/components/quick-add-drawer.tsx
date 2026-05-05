@@ -4,12 +4,12 @@ import { Plus } from 'lucide-react';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
-  Drawer,
-  DrawerContent,
-  DrawerDescription,
-  DrawerHeader,
-  DrawerTitle,
-} from '@/components/ui/drawer';
+  ResponsiveDialog,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import { TransactionForm } from './transaction-form';
 
 interface AccountOption {
@@ -17,22 +17,19 @@ interface AccountOption {
   name: string;
   currency: string;
   type: string;
-  balanceMinor: string;
-  creditLimitMinor: string | null;
+  realMinor?: string;
+  creditLimitMinor?: string | null;
 }
-
 interface CategoryOption {
   id: string;
   name: string;
 }
-
 interface DebtOption {
   id: string;
   name: string;
   currency: string;
-  currentBalanceMinor: string;
+  realBalanceMinor?: string;
 }
-
 interface SavingsOption {
   id: string;
   name: string;
@@ -45,6 +42,7 @@ interface Props {
   debts: DebtOption[];
   savingsGoals: SavingsOption[];
   defaultCurrency: string;
+  defaultDate?: string;
 }
 
 export function QuickAddDrawer({
@@ -53,6 +51,7 @@ export function QuickAddDrawer({
   debts,
   savingsGoals,
   defaultCurrency,
+  defaultDate,
 }: Props) {
   const [open, setOpen] = useState(false);
 
@@ -68,24 +67,27 @@ export function QuickAddDrawer({
         <Plus className="size-6" aria-hidden />
       </Button>
 
-      <Drawer open={open} onOpenChange={setOpen}>
-        <DrawerContent>
-          <DrawerHeader>
-            <DrawerTitle>Nuevo movimiento</DrawerTitle>
-            <DrawerDescription>Registra un ingreso, gasto, transferencia o pago.</DrawerDescription>
-          </DrawerHeader>
-          <div className="px-4 pb-6 pt-2">
+      <ResponsiveDialog open={open} onOpenChange={setOpen}>
+        <ResponsiveDialogContent>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>Nuevo movimiento</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
+              Registra un ingreso, gasto, transferencia o pago.
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <div className="px-4 pb-6 pt-2 md:px-0 md:pb-0">
             <TransactionForm
               accounts={accounts}
               categories={categories}
               debts={debts}
               savingsGoals={savingsGoals}
               defaultCurrency={defaultCurrency}
+              defaultDate={defaultDate}
               onSuccess={() => setOpen(false)}
             />
           </div>
-        </DrawerContent>
-      </Drawer>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
     </>
   );
 }

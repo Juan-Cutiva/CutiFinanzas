@@ -8,7 +8,6 @@ import { toast } from 'sonner';
 import type { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
-import { DayOfMonthPicker, nextDateForDayOfMonth } from '@/components/ui/day-of-month-picker';
 import { FileUpload } from '@/components/ui/file-upload';
 import {
   Form,
@@ -30,55 +29,36 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { dayjs, formatAmount } from '@/lib/format';
+import { formatAmount } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import { createTransactionAction } from '../actions';
 import {
-  KINDS_WITH_FREQUENCY,
-  PRIMARY_KIND_LABELS,
-  type PrimaryKind,
-  type TransactionInput,
-  TX_PRIMARY_KINDS,
-  transactionInputSchema,
+  type CreateTransactionInput,
+  createTransactionSchema,
+  RECURRENCE_FREQUENCIES,
+  RECURRENCE_LABELS,
+  type RecurrenceFrequency,
+  type TransactionKind,
 } from '../schema';
-
-function primaryFromKind(kind: TransactionInput['kind']): PrimaryKind {
-  if (kind === 'income_fixed' || kind === 'income_variable') return 'income';
-  if (kind === 'expense_fixed' || kind === 'expense_variable') return 'expense';
-  return kind as PrimaryKind;
-}
-
-function isFixedFromKind(kind: TransactionInput['kind']): boolean {
-  return kind === 'income_fixed' || kind === 'expense_fixed';
-}
-
-function buildKind(primary: PrimaryKind, isRecurring: boolean): TransactionInput['kind'] {
-  if (primary === 'income') return isRecurring ? 'income_fixed' : 'income_variable';
-  if (primary === 'expense') return isRecurring ? 'expense_fixed' : 'expense_variable';
-  return primary as TransactionInput['kind'];
-}
 
 interface AccountOption {
   id: string;
   name: string;
   currency: string;
   type: string;
-  balanceMinor: string;
-  creditLimitMinor: string | null;
+  realMinor?: string;
+  creditLimitMinor?: string | null;
 }
-
 interface CategoryOption {
   id: string;
   name: string;
 }
-
 interface DebtOption {
   id: string;
   name: string;
   currency: string;
-  currentBalanceMinor: string;
+  realBalanceMinor?: string;
 }
-
 interface SavingsOption {
   id: string;
   name: string;
@@ -91,9 +71,21 @@ interface Props {
   debts?: DebtOption[];
   savingsGoals?: SavingsOption[];
   defaultCurrency: string;
-  defaultKind?: TransactionInput['kind'];
+  defaultDate?: string;
+  defaultKind?: TransactionKind;
   onSuccess?: () => void;
 }
+
+const KIND_LABELS_FORM: Record<TransactionKind, string> = {
+  expense: 'Gasto',
+  income: 'Ingreso',
+  refund: 'Devolución',
+  transfer: 'Transferencia entre cuentas',
+  cc_charge: 'Compra con tarjeta de crédito',
+  cc_payment: 'Pago a tarjeta de crédito',
+  loan_payment: 'Cuota de préstamo',
+  savings_contribution: 'Aporte a meta de ahorro',
+};
 
 export function TransactionForm({
   accounts,
@@ -101,181 +93,181 @@ export function TransactionForm({
   debts = [],
   savingsGoals = [],
   defaultCurrency,
-  defaultKind = 'expense_variable',
+  defaultDate,
+  defaultKind = 'expense',
   onSuccess,
 }: Props) {
-  const today = dayjs().format('YYYY-MM-DD');
+  const today = defaultDate ?? new Date().toISOString().slice(0, 10);
 
   const assetAccounts = React.useMemo(
-    () => accounts.filter((a) => a.type !== 'credit_card' && a.type !== 'loan'),
+    () => accounts.filter((a) => a.type !== 'credit_card'),
     [accounts],
   );
-  const creditCardAccounts = React.useMemo(
+  const ccAccounts = React.useMemo(
     () => accounts.filter((a) => a.type === 'credit_card'),
     [accounts],
   );
-  const hasCreditCard = creditCardAccounts.length > 0;
 
-  const form = useForm<z.input<typeof transactionInputSchema>, unknown, TransactionInput>({
-    resolver: zodResolver(transactionInputSchema),
+  const form = useForm<z.input<typeof createTransactionSchema>, unknown, CreateTransactionInput>({
+    resolver: zodResolver(createTransactionSchema),
     defaultValues: {
       kind: defaultKind,
       accountId: accounts[0]?.id ?? '',
-      transferAccountId: null,
+      counterAccountId: null,
       categoryId: null,
       debtId: null,
       savingsGoalId: null,
       amount: 0,
       currency: accounts[0]?.currency ?? defaultCurrency,
-      occurredAt: today,
+      transactionDate: today,
       description: '',
       notes: '',
-      isPaid: true,
-      isRecurring: isFixedFromKind(defaultKind),
+      recurrence: null,
     },
   });
 
-  const [primary, setPrimary] = React.useState<PrimaryKind>(() => primaryFromKind(defaultKind));
-  const [isRecurringUI, setIsRecurringUI] = React.useState<boolean>(() =>
-    isFixedFromKind(defaultKind),
-  );
-
-  function applyPrimary(next: PrimaryKind) {
-    setPrimary(next);
-    const supportsFreq = KINDS_WITH_FREQUENCY.has(next);
-    const recurring = supportsFreq ? isRecurringUI : false;
-    if (!supportsFreq && isRecurringUI) setIsRecurringUI(false);
-    form.setValue('kind', buildKind(next, recurring));
-    form.setValue('isRecurring', recurring);
-  }
-
-  function applyFrequency(recurring: boolean) {
-    setIsRecurringUI(recurring);
-    form.setValue('kind', buildKind(primary, recurring));
-    form.setValue('isRecurring', recurring);
-  }
+  const [isRecurring, setIsRecurring] = React.useState(false);
+  const [recurrenceFrequency, setRecurrenceFrequency] =
+    React.useState<RecurrenceFrequency>('monthly');
+  const [recurrenceName, setRecurrenceName] = React.useState('');
 
   const watchedKind = form.watch('kind');
   const watchedAccountId = form.watch('accountId');
-  const watchedTransferAccountId = form.watch('transferAccountId');
+  const watchedCounterAccountId = form.watch('counterAccountId');
   const watchedDebtId = form.watch('debtId');
   const watchedAmount = form.watch('amount');
+
   const selectedAccount = accounts.find((a) => a.id === watchedAccountId);
-  const selectedTransferAccount = accounts.find((a) => a.id === watchedTransferAccountId);
+  const selectedCounterAccount = accounts.find((a) => a.id === watchedCounterAccountId);
   const selectedDebt = debts.find((d) => d.id === watchedDebtId);
 
-  const isFixed =
-    watchedKind === 'income_fixed' || watchedKind === 'expense_fixed' || isRecurringUI;
+  const isExpense = watchedKind === 'expense';
+  const isIncome = watchedKind === 'income';
+  const isRefund = watchedKind === 'refund';
   const isTransfer = watchedKind === 'transfer';
-  const isCreditCardPayment = watchedKind === 'credit_card_payment';
-  const isExpense = watchedKind === 'expense_fixed' || watchedKind === 'expense_variable';
-  const isDebtPayment = watchedKind === 'debt_payment';
+  const isCcCharge = watchedKind === 'cc_charge';
+  const isCcPayment = watchedKind === 'cc_payment';
+  const isLoanPayment = watchedKind === 'loan_payment';
   const isSavingsContribution = watchedKind === 'savings_contribution';
-  const accountIsCreditCard = selectedAccount?.type === 'credit_card';
 
-  const accountsForOrigin = isCreditCardPayment ? assetAccounts : accounts;
-  const accountsForDestination = isCreditCardPayment
-    ? creditCardAccounts
-    : accounts.filter((a) => a.id !== watchedAccountId);
+  const needsCategory = isExpense || isIncome || isRefund || isCcCharge;
+  const supportsRecurring = !isRefund && !isTransfer; // refund y transfer son siempre puntuales
 
-  const accountBalanceMajor = selectedAccount
-    ? Number(BigInt(selectedAccount.balanceMinor)) / 100
+  // Filtrar cuentas según el kind
+  const accountsForOrigin: AccountOption[] = React.useMemo(() => {
+    if (isCcCharge) return ccAccounts;
+    if (isCcPayment) return assetAccounts;
+    if (isLoanPayment || isSavingsContribution || isTransfer) return assetAccounts;
+    if (isExpense || isIncome || isRefund) return assetAccounts;
+    return accounts;
+  }, [
+    isCcCharge,
+    isCcPayment,
+    isLoanPayment,
+    isSavingsContribution,
+    isTransfer,
+    isExpense,
+    isIncome,
+    isRefund,
+    accounts,
+    assetAccounts,
+    ccAccounts,
+  ]);
+
+  const accountsForCounter: AccountOption[] = React.useMemo(() => {
+    if (isCcPayment) return ccAccounts;
+    if (isTransfer) return assetAccounts.filter((a) => a.id !== watchedAccountId);
+    return [];
+  }, [isCcPayment, isTransfer, assetAccounts, ccAccounts, watchedAccountId]);
+
+  // Limpiar campos al cambiar kind
+  // biome-ignore lint/correctness/useExhaustiveDependencies: solo reaccionamos al cambio de kind
+  React.useEffect(() => {
+    // Reset campos según kind
+    if (!needsCategory) form.setValue('categoryId', null);
+    if (!isLoanPayment) form.setValue('debtId', null);
+    if (!isSavingsContribution) form.setValue('savingsGoalId', null);
+    if (!isTransfer && !isCcPayment) form.setValue('counterAccountId', null);
+
+    // Ajusta cuenta a las válidas para este kind
+    const valid = accountsForOrigin.find((a) => a.id === form.getValues('accountId'));
+    if (!valid && accountsForOrigin[0]) {
+      form.setValue('accountId', accountsForOrigin[0].id);
+      form.setValue('currency', accountsForOrigin[0].currency);
+    }
+
+    // Counter account
+    if (isTransfer || isCcPayment) {
+      const validCounter = accountsForCounter.find(
+        (a) => a.id === form.getValues('counterAccountId'),
+      );
+      if (!validCounter && accountsForCounter[0]) {
+        form.setValue('counterAccountId', accountsForCounter[0].id);
+      }
+    }
+
+    // Recurrence: si el kind no soporta recurring, apagar
+    if (!supportsRecurring) setIsRecurring(false);
+  }, [watchedKind]);
+
+  const accountBalanceMajor = selectedAccount?.realMinor
+    ? Number(BigInt(selectedAccount.realMinor)) / 100
     : 0;
-  const accountCreditLimitMajor = selectedAccount?.creditLimitMinor
+  const ccLimitMajor = selectedAccount?.creditLimitMinor
     ? Number(BigInt(selectedAccount.creditLimitMinor)) / 100
     : 0;
-  const availableMajor = accountIsCreditCard
-    ? Math.max(0, accountCreditLimitMajor - accountBalanceMajor)
-    : accountBalanceMajor;
+  const ccAvailable = isCcCharge ? Math.max(0, ccLimitMajor - accountBalanceMajor) : 0;
 
-  const reducesAccount =
-    isExpense || isTransfer || isCreditCardPayment || isDebtPayment || isSavingsContribution;
   const overspending =
+    !isCcCharge &&
+    !isIncome &&
+    !isRefund &&
     !!selectedAccount &&
-    reducesAccount &&
-    Number(watchedAmount ?? 0) > 0 &&
-    Number(watchedAmount) > availableMajor;
+    Number(watchedAmount ?? 0) > accountBalanceMajor;
+  const overCcLimit = isCcCharge && !!selectedAccount && Number(watchedAmount ?? 0) > ccAvailable;
 
-  const destinationDebtMajor =
-    isCreditCardPayment && selectedTransferAccount
-      ? Number(BigInt(selectedTransferAccount.balanceMinor)) / 100
-      : 0;
-  const overpayingCard =
-    isCreditCardPayment &&
-    !!selectedTransferAccount &&
-    Number(watchedAmount ?? 0) > 0 &&
-    Number(watchedAmount) > destinationDebtMajor;
+  const counterDebtMajor = selectedCounterAccount?.realMinor
+    ? Number(BigInt(selectedCounterAccount.realMinor)) / 100
+    : 0;
+  const overpayingCC =
+    isCcPayment && !!selectedCounterAccount && Number(watchedAmount ?? 0) > counterDebtMajor;
 
-  const debtBalanceMajor = selectedDebt
-    ? Number(BigInt(selectedDebt.currentBalanceMinor)) / 100
+  const debtBalanceMajor = selectedDebt?.realBalanceMinor
+    ? Number(BigInt(selectedDebt.realBalanceMinor)) / 100
     : 0;
   const overpayingDebt =
-    isDebtPayment &&
+    isLoanPayment &&
     !!selectedDebt &&
-    Number(watchedAmount ?? 0) > 0 &&
-    Number(watchedAmount) > debtBalanceMajor;
-
-  React.useEffect(() => {
-    if (isExpense) {
-      const current = form.getValues('categoryId');
-      if (!current && categories[0]) form.setValue('categoryId', categories[0].id);
-    } else if (!isCreditCardPayment) {
-      form.setValue('categoryId', null);
-    }
-    if (!isTransfer && !isCreditCardPayment) form.setValue('transferAccountId', null);
-    if (!isDebtPayment) form.setValue('debtId', null);
-    if (!isSavingsContribution) form.setValue('savingsGoalId', null);
-
-    if (isCreditCardPayment) {
-      const currentAccount = form.getValues('accountId');
-      if (!assetAccounts.find((a) => a.id === currentAccount) && assetAccounts[0]) {
-        form.setValue('accountId', assetAccounts[0].id);
-        form.setValue('currency', assetAccounts[0].currency);
-      }
-      const currentDest = form.getValues('transferAccountId');
-      if (!creditCardAccounts.find((a) => a.id === currentDest) && creditCardAccounts[0]) {
-        form.setValue('transferAccountId', creditCardAccounts[0].id);
-      }
-    }
-  }, [
-    watchedKind,
-    isExpense,
-    isTransfer,
-    isCreditCardPayment,
-    isDebtPayment,
-    isSavingsContribution,
-    assetAccounts,
-    creditCardAccounts,
-    categories,
-    form,
-  ]);
+    Number(watchedAmount ?? 0) > debtBalanceMajor &&
+    debtBalanceMajor > 0;
 
   const { execute, isPending } = useAction(createTransactionAction, {
     onSuccess: () => {
       toast.success('Movimiento registrado');
-      form.reset({
-        kind: defaultKind,
-        accountId: accounts[0]?.id ?? '',
-        transferAccountId: null,
-        categoryId: null,
-        debtId: null,
-        savingsGoalId: null,
-        amount: 0,
-        currency: accounts[0]?.currency ?? defaultCurrency,
-        occurredAt: today,
-        description: '',
-        notes: '',
-        isPaid: true,
-        isRecurring: isFixedFromKind(defaultKind),
-      });
-      setPrimary(primaryFromKind(defaultKind));
-      setIsRecurringUI(isFixedFromKind(defaultKind));
+      form.reset();
+      setIsRecurring(false);
+      setRecurrenceName('');
       onSuccess?.();
     },
     onError: ({ error }) => {
       toast.error(error.serverError ?? 'No se pudo registrar');
     },
   });
+
+  function onSubmit(data: CreateTransactionInput) {
+    const payload: CreateTransactionInput = {
+      ...data,
+      recurrence:
+        isRecurring && supportsRecurring
+          ? {
+              frequency: recurrenceFrequency,
+              name:
+                recurrenceName.trim() || data.description?.trim() || KIND_LABELS_FORM[data.kind],
+            }
+          : null,
+    };
+    execute(payload);
+  }
 
   if (accounts.length === 0) {
     return (
@@ -290,58 +282,104 @@ export function TransactionForm({
     );
   }
 
-  const visiblePrimary = TX_PRIMARY_KINDS.filter(
-    (k) => k !== 'credit_card_payment' || hasCreditCard,
-  );
-
-  const supportsFrequency = KINDS_WITH_FREQUENCY.has(primary);
-
-  function setOccurredAtFromDayOfMonth(day: number) {
-    form.setValue('occurredAt', nextDateForDayOfMonth(day));
-  }
+  // Filtrar kinds visibles según contexto
+  const allKinds: TransactionKind[] = [
+    'expense',
+    'income',
+    'refund',
+    'transfer',
+    'cc_charge',
+    'cc_payment',
+    'loan_payment',
+    'savings_contribution',
+  ];
+  const visibleKinds = allKinds.filter((k) => {
+    if ((k === 'cc_charge' || k === 'cc_payment') && ccAccounts.length === 0) return false;
+    if (k === 'cc_payment' && assetAccounts.length === 0) return false;
+    if (k === 'transfer' && assetAccounts.length < 2) return false;
+    if (k === 'loan_payment' && debts.length === 0) return false;
+    if (k === 'savings_contribution' && savingsGoals.length === 0) return false;
+    return true;
+  });
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit((data) => execute(data))} className="flex flex-col gap-4">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="tx-primary">Tipo</Label>
-          <Select value={primary} onValueChange={(v) => applyPrimary(v as PrimaryKind)}>
-            <SelectTrigger id="tx-primary">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {visiblePrimary.map((k) => (
-                <SelectItem key={k} value={k}>
-                  {PRIMARY_KIND_LABELS[k]}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
+        {/* Tipo de movimiento */}
+        <FormField
+          control={form.control}
+          name="kind"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Tipo</FormLabel>
+              <Select value={field.value} onValueChange={field.onChange}>
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  {visibleKinds.map((k) => (
+                    <SelectItem key={k} value={k}>
+                      {KIND_LABELS_FORM[k]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
-        {supportsFrequency ? (
+        {/* Frecuencia */}
+        {supportsRecurring ? (
           <div className="flex flex-col gap-2">
-            <Label htmlFor="tx-frequency">Frecuencia</Label>
+            <Label>Frecuencia</Label>
             <Select
-              value={isRecurringUI ? 'fixed' : 'variable'}
-              onValueChange={(v) => applyFrequency(v === 'fixed')}
+              value={isRecurring ? recurrenceFrequency : 'once'}
+              onValueChange={(v) => {
+                if (v === 'once') {
+                  setIsRecurring(false);
+                } else {
+                  setIsRecurring(true);
+                  setRecurrenceFrequency(v as RecurrenceFrequency);
+                }
+              }}
             >
-              <SelectTrigger id="tx-frequency">
+              <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="variable">Variable (este movimiento puntual)</SelectItem>
-                <SelectItem value="fixed">Fijo (se repite cada mes)</SelectItem>
+                <SelectItem value="once">Único (este movimiento puntual)</SelectItem>
+                {RECURRENCE_FREQUENCIES.map((f) => (
+                  <SelectItem key={f} value={f}>
+                    {RECURRENCE_LABELS[f]}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
             <p className="text-xs text-muted-foreground">
-              {isRecurringUI
-                ? 'Se creará una regla y aparecerá automáticamente en los meses siguientes.'
+              {isRecurring
+                ? 'Se creará una regla recurrente. La primera ocurrencia es la fecha que selecciones; las siguientes se materializan automáticamente.'
                 : 'Solo aplica a la fecha que selecciones.'}
             </p>
           </div>
         ) : null}
 
+        {/* Nombre de la regla recurrente */}
+        {isRecurring ? (
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="rrname">Nombre de la regla</Label>
+            <Input
+              id="rrname"
+              placeholder="Ej. Spotify, Salario quincenal, Cuota moto…"
+              value={recurrenceName}
+              onChange={(e) => setRecurrenceName(e.target.value)}
+            />
+          </div>
+        ) : null}
+
+        {/* Monto */}
         <FormField
           control={form.control}
           name="amount"
@@ -364,15 +402,16 @@ export function TransactionForm({
           )}
         />
 
+        {/* Cuenta principal */}
         <FormField
           control={form.control}
           name="accountId"
           render={({ field }) => (
             <FormItem>
               <FormLabel>
-                {isCreditCardPayment
-                  ? 'Pago desde la cuenta'
-                  : isTransfer
+                {isCcCharge
+                  ? 'Tarjeta de crédito'
+                  : isCcPayment || isTransfer || isLoanPayment || isSavingsContribution
                     ? 'Desde la cuenta'
                     : 'Cuenta'}
               </FormLabel>
@@ -399,13 +438,13 @@ export function TransactionForm({
               </Select>
               {selectedAccount ? (
                 <FormDescription>
-                  {accountIsCreditCard ? (
+                  {isCcCharge ? (
                     <>
                       Cupo disponible{' '}
                       <span className="font-mono tabular-nums font-semibold text-foreground">
-                        {formatAmount(availableMajor, selectedAccount.currency as CurrencyCode)}
+                        {formatAmount(ccAvailable, selectedAccount.currency as CurrencyCode)}
                       </span>{' '}
-                      · deuda actual{' '}
+                      · saldo CC{' '}
                       {formatAmount(accountBalanceMajor, selectedAccount.currency as CurrencyCode)}
                     </>
                   ) : (
@@ -431,31 +470,30 @@ export function TransactionForm({
         />
 
         {overspending ? (
-          <p className="rounded-md border border-(--expense)/40 bg-(--expense)/10 px-3 py-2 text-xs text-expense">
-            {accountIsCreditCard
-              ? `Excedes el cupo disponible (${formatAmount(availableMajor, (selectedAccount?.currency ?? 'COP') as CurrencyCode)}).`
-              : `No tienes saldo suficiente. Disponible: ${formatAmount(availableMajor, (selectedAccount?.currency ?? 'COP') as CurrencyCode)}.`}
+          <p className="rounded-md border border-(--expense)/40 bg-(--expense)/10 px-3 py-2 text-xs text-amount-negative">
+            No tienes saldo suficiente. Disponible:{' '}
+            {formatAmount(
+              accountBalanceMajor,
+              (selectedAccount?.currency ?? 'COP') as CurrencyCode,
+            )}
+          </p>
+        ) : null}
+        {overCcLimit ? (
+          <p className="rounded-md border border-(--expense)/40 bg-(--expense)/10 px-3 py-2 text-xs text-amount-negative">
+            Excedes el cupo disponible (
+            {formatAmount(ccAvailable, (selectedAccount?.currency ?? 'COP') as CurrencyCode)}
+            ).
           </p>
         ) : null}
 
-        {accountIsCreditCard &&
-        (watchedKind === 'income_fixed' || watchedKind === 'income_variable') ? (
-          <p className="rounded-md border border-[color:var(--warning)]/40 bg-[color:var(--warning)]/10 px-3 py-2 text-xs text-[color:var(--warning)]">
-            Tip: si estás abonando a tu tarjeta, usa <strong>Pago de tarjeta de crédito</strong> con
-            la cuenta de origen real (débito/ahorro). Aquí estarías sumando saldo a la tarjeta
-            misma.
-          </p>
-        ) : null}
-
-        {isTransfer || isCreditCardPayment ? (
+        {/* Cuenta destino (transfer, cc_payment) */}
+        {(isTransfer || isCcPayment) && (
           <FormField
             control={form.control}
-            name="transferAccountId"
+            name="counterAccountId"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>
-                  {isCreditCardPayment ? 'Tarjeta a la que pagas' : 'A la cuenta'}
-                </FormLabel>
+                <FormLabel>{isCcPayment ? 'Tarjeta a la que pagas' : 'A la cuenta'}</FormLabel>
                 <Select value={field.value ?? ''} onValueChange={field.onChange}>
                   <FormControl>
                     <SelectTrigger>
@@ -463,80 +501,53 @@ export function TransactionForm({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {accountsForDestination.length === 0 ? (
-                      <SelectItem value="-" disabled>
-                        {isCreditCardPayment
-                          ? 'Sin tarjetas registradas'
-                          : 'Sin cuentas disponibles'}
+                    {accountsForCounter.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.name} · {a.currency}
                       </SelectItem>
-                    ) : (
-                      accountsForDestination.map((a) => (
-                        <SelectItem key={a.id} value={a.id}>
-                          {a.name} · {a.currency}
-                        </SelectItem>
-                      ))
-                    )}
+                    ))}
                   </SelectContent>
                 </Select>
-                {isCreditCardPayment && selectedTransferAccount ? (
+                {isCcPayment && selectedCounterAccount ? (
                   <FormDescription>
-                    Deuda actual{' '}
-                    <span
-                      className={`font-mono tabular-nums font-semibold ${
-                        destinationDebtMajor > 0 ? 'text-amount-negative' : 'text-foreground'
-                      }`}
-                    >
+                    Saldo a pagar de la tarjeta:{' '}
+                    <span className="font-mono tabular-nums font-semibold text-amount-negative">
                       {formatAmount(
-                        destinationDebtMajor,
-                        selectedTransferAccount.currency as CurrencyCode,
+                        counterDebtMajor,
+                        selectedCounterAccount.currency as CurrencyCode,
                       )}
                     </span>
-                    {selectedTransferAccount.creditLimitMinor ? (
-                      <>
-                        {' '}
-                        · cupo total{' '}
-                        {formatAmount(
-                          Number(BigInt(selectedTransferAccount.creditLimitMinor)) / 100,
-                          selectedTransferAccount.currency as CurrencyCode,
-                        )}
-                      </>
-                    ) : null}
                   </FormDescription>
                 ) : null}
                 <FormMessage />
               </FormItem>
             )}
           />
-        ) : null}
+        )}
 
-        {overpayingCard && selectedTransferAccount ? (
-          <p className="rounded-md border border-(--expense)/40 bg-(--expense)/10 px-3 py-2 text-xs text-expense">
-            El pago supera la deuda actual de la tarjeta (
-            {formatAmount(destinationDebtMajor, selectedTransferAccount.currency as CurrencyCode)}
+        {overpayingCC && selectedCounterAccount ? (
+          <p className="rounded-md border border-(--expense)/40 bg-(--expense)/10 px-3 py-2 text-xs text-amount-negative">
+            El pago excede el saldo de la tarjeta (
+            {formatAmount(counterDebtMajor, selectedCounterAccount.currency as CurrencyCode)}
             ).
           </p>
         ) : null}
 
-        {isExpense || isCreditCardPayment ? (
+        {/* Categoría */}
+        {needsCategory ? (
           <FormField
             control={form.control}
             name="categoryId"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Categoría {isCreditCardPayment ? '(opcional)' : ''}</FormLabel>
-                <Select
-                  value={field.value ?? '__none__'}
-                  onValueChange={(v) => field.onChange(v === '__none__' ? null : v)}
-                >
+                <FormLabel>Categoría</FormLabel>
+                <Select value={field.value ?? ''} onValueChange={field.onChange}>
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecciona categoría" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {isCreditCardPayment ? (
-                      <SelectItem value="__none__">Sin categoría</SelectItem>
-                    ) : null}
                     {categories.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.name}
@@ -550,41 +561,32 @@ export function TransactionForm({
           />
         ) : null}
 
-        {isDebtPayment ? (
+        {/* Préstamo */}
+        {isLoanPayment ? (
           <FormField
             control={form.control}
             name="debtId"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Deuda</FormLabel>
+                <FormLabel>Préstamo</FormLabel>
                 <Select value={field.value ?? ''} onValueChange={field.onChange}>
                   <FormControl>
                     <SelectTrigger>
-                      <SelectValue placeholder="Selecciona la deuda" />
+                      <SelectValue placeholder="Selecciona el préstamo" />
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {debts.length === 0 ? (
-                      <SelectItem value="-" disabled>
-                        Sin deudas activas
+                    {debts.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name} · {d.currency}
                       </SelectItem>
-                    ) : (
-                      debts.map((d) => (
-                        <SelectItem key={d.id} value={d.id}>
-                          {d.name} · {d.currency}
-                        </SelectItem>
-                      ))
-                    )}
+                    ))}
                   </SelectContent>
                 </Select>
                 {selectedDebt ? (
                   <FormDescription>
-                    Saldo restante{' '}
-                    <span
-                      className={`font-mono tabular-nums font-semibold ${
-                        debtBalanceMajor > 0 ? 'text-amount-negative' : 'text-foreground'
-                      }`}
-                    >
+                    Saldo restante:{' '}
+                    <span className="font-mono tabular-nums font-semibold text-amount-negative">
                       {formatAmount(debtBalanceMajor, selectedDebt.currency as CurrencyCode)}
                     </span>
                   </FormDescription>
@@ -596,13 +598,14 @@ export function TransactionForm({
         ) : null}
 
         {overpayingDebt && selectedDebt ? (
-          <p className="rounded-md border border-(--expense)/40 bg-(--expense)/10 px-3 py-2 text-xs text-expense">
-            El pago supera el saldo restante de la deuda (
+          <p className="rounded-md border border-(--expense)/40 bg-(--expense)/10 px-3 py-2 text-xs text-amount-negative">
+            El pago supera el saldo (
             {formatAmount(debtBalanceMajor, selectedDebt.currency as CurrencyCode)}
             ).
           </p>
         ) : null}
 
+        {/* Meta de ahorro */}
         {isSavingsContribution ? (
           <FormField
             control={form.control}
@@ -617,17 +620,11 @@ export function TransactionForm({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {savingsGoals.length === 0 ? (
-                      <SelectItem value="-" disabled>
-                        Sin metas activas
+                    {savingsGoals.map((g) => (
+                      <SelectItem key={g.id} value={g.id}>
+                        {g.name} · {g.currency}
                       </SelectItem>
-                    ) : (
-                      savingsGoals.map((g) => (
-                        <SelectItem key={g.id} value={g.id}>
-                          {g.name} · {g.currency}
-                        </SelectItem>
-                      ))
-                    )}
+                    ))}
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -636,54 +633,31 @@ export function TransactionForm({
           />
         ) : null}
 
-        {isFixed ? (
-          <FormField
-            control={form.control}
-            name="occurredAt"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Día del mes en que se repite</FormLabel>
-                <FormControl>
-                  <DayOfMonthPicker
-                    value={Number.parseInt((field.value || today).slice(8, 10), 10)}
-                    onChange={(d) => setOccurredAtFromDayOfMonth(d)}
-                  />
-                </FormControl>
-                <FormDescription>
-                  La primera ocurrencia será el día {field.value?.slice(8, 10)} del mes en curso (o
-                  el siguiente si ya pasó). Cada mes se repetirá automáticamente en ese día.
-                </FormDescription>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        ) : (
-          <FormField
-            control={form.control}
-            name="occurredAt"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Fecha</FormLabel>
-                <FormControl>
-                  <DatePicker value={field.value} onChange={field.onChange} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        )}
+        {/* Fecha */}
+        <FormField
+          control={form.control}
+          name="transactionDate"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Fecha</FormLabel>
+              <FormControl>
+                <DatePicker value={field.value} onChange={field.onChange} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
+        {/* Descripción */}
         <FormField
           control={form.control}
           name="description"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Descripción {isFixed ? '' : '(opcional)'}</FormLabel>
+              <FormLabel>Descripción (opcional)</FormLabel>
               <FormControl>
                 <Input
-                  placeholder={
-                    isFixed ? 'Ej. Salario quincenal, Spotify…' : 'Mercado, gasolina, salario...'
-                  }
+                  placeholder="Mercado, gasolina, salario..."
                   {...field}
                   value={field.value ?? ''}
                 />
@@ -693,6 +667,7 @@ export function TransactionForm({
           )}
         />
 
+        {/* Notas */}
         <FormField
           control={form.control}
           name="notes"
@@ -707,7 +682,8 @@ export function TransactionForm({
           )}
         />
 
-        {isFixed || isTransfer || isCreditCardPayment ? null : (
+        {/* Comprobante */}
+        {!isTransfer && !isCcPayment && !isRecurring ? (
           <FormField
             control={form.control}
             name="receiptUrl"
@@ -721,11 +697,11 @@ export function TransactionForm({
               </FormItem>
             )}
           />
-        )}
+        ) : null}
 
         <Button
           type="submit"
-          disabled={isPending || overspending || overpayingCard || overpayingDebt}
+          disabled={isPending || overspending || overCcLimit || overpayingCC || overpayingDebt}
           size="lg"
           className="mt-2"
         >

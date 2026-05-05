@@ -8,16 +8,12 @@ import { getOrCreateUser } from '@/db/queries/users';
 import { listCategoriesByUser } from '@/features/categories/queries';
 import { CategoryChart } from '@/features/reports/components/category-chart';
 import { CategoryInsights } from '@/features/reports/components/category-insights';
-import { ExpenseHeatmap } from '@/features/reports/components/expense-heatmap';
 import { SankeyFlow } from '@/features/reports/components/sankey-flow';
 import { categoryInsights } from '@/features/reports/predictions';
-import {
-  dailyTotalsForMonth,
-  totalsByCategoryByMonth,
-  totalsByMonth,
-} from '@/features/transactions/queries';
+import { getCategoryExpenseTotals, getPeriodTotals, monthRange } from '@/lib/accounting';
 import { dayjs, formatAmount, nowInTz } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
+import type { UserId } from '@/types/ids';
 
 export const metadata: Metadata = { title: 'Reportes' };
 export const dynamic = 'force-dynamic';
@@ -28,7 +24,7 @@ interface PageProps {
 
 export default async function ReportesPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
-  const userId = user.id as never;
+  const userId = user.id as UserId;
   const currency = user.defaultCurrency as CurrencyCode;
   const params = await searchParams;
   const now = nowInTz(user.timezone);
@@ -36,36 +32,30 @@ export default async function ReportesPage({ searchParams }: PageProps) {
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
   const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
 
-  const [totals, categories, byCategory, daily, insights] = await Promise.all([
-    totalsByMonth(userId, year, month),
+  const { from, to } = monthRange(year, month);
+  const [totals, categories, byCategory, insights] = await Promise.all([
+    getPeriodTotals(userId, from, to),
     listCategoriesByUser(userId),
-    totalsByCategoryByMonth(userId, year, month),
-    dailyTotalsForMonth(userId, year, month),
+    getCategoryExpenseTotals(userId, from, to),
     categoryInsights(userId, year, month, 3),
   ]);
 
-  const totalIncome = totals.incomeMinor / 100;
-  const totalExpense =
-    (totals.expenseFixedMinor + totals.expenseVariableMinor + totals.debtPaymentMinor) / 100;
-  const totalSavings = totals.savingsContributionMinor / 100;
+  const totalIncome = Number(totals.incomeMinor) / 100;
+  const totalExpense = Number(totals.expenseMinor) / 100;
+  const totalSavings = Number(totals.savingsMinor) / 100;
   const balance = totalIncome - totalExpense - totalSavings;
 
   const chartData = categories
     .map((c) => ({
       name: c.name,
-      value: (byCategory.find((b) => b.categoryId === c.id)?.total ?? 0) / 100,
+      value: Number(byCategory.find((b) => b.categoryId === c.id)?.totalMinor ?? 0n) / 100,
       color: c.color,
     }))
     .filter((d) => d.value > 0)
     .sort((a, b) => b.value - a.value);
 
-  const sankeyExpenses = chartData.map((d) => ({
-    name: d.name,
-    value: d.value,
-    color: d.color,
-  }));
-
-  const hasData = chartData.length > 0 || totals.incomeMinor > 0;
+  const sankeyExpenses = chartData.map((d) => ({ name: d.name, value: d.value, color: d.color }));
+  const hasData = chartData.length > 0 || totalIncome > 0;
 
   return (
     <div className="mx-auto w-full max-w-5xl space-y-6">
@@ -136,18 +126,6 @@ export default async function ReportesPage({ searchParams }: PageProps) {
                 savings={totalSavings}
                 currency={currency}
               />
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>Mapa de gastos diario</CardTitle>
-              <CardDescription>
-                Más oscuro = más gasto. Pasa el cursor sobre un día para ver el monto.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <ExpenseHeatmap data={daily} year={year} month={month} currency={currency} />
             </CardContent>
           </Card>
 

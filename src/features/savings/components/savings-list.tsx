@@ -15,19 +15,10 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { MoneyInput } from '@/components/ui/money-input';
 import { Progress } from '@/components/ui/progress';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { formatAmount } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
-import { contributeToGoalAction, deleteSavingsGoalAction } from '../actions';
+import { deleteSavingsGoalAction } from '../actions';
 
 export interface SavingsGoalItem {
   id: string;
@@ -40,32 +31,12 @@ export interface SavingsGoalItem {
   targetDate: string | null;
 }
 
-export interface AccountOption {
-  id: string;
-  name: string;
-  currency: string;
-}
-
 interface Props {
   items: SavingsGoalItem[];
-  accounts: AccountOption[];
 }
 
-export function SavingsList({ items, accounts }: Props) {
-  const [contributing, setContributing] = useState<SavingsGoalItem | null>(null);
+export function SavingsList({ items }: Props) {
   const [deleting, setDeleting] = useState<SavingsGoalItem | null>(null);
-  const [amount, setAmount] = useState<number | undefined>(undefined);
-  const [accountId, setAccountId] = useState<string>('');
-
-  const contribute = useAction(contributeToGoalAction, {
-    onSuccess: () => {
-      toast.success('Aporte registrado');
-      setContributing(null);
-      setAmount(undefined);
-      setAccountId('');
-    },
-    onError: ({ error }) => toast.error(error.serverError ?? 'Error'),
-  });
 
   const remove = useAction(deleteSavingsGoalAction, {
     onSuccess: () => {
@@ -74,16 +45,6 @@ export function SavingsList({ items, accounts }: Props) {
     },
     onError: ({ error }) => toast.error(error.serverError ?? 'Error'),
   });
-
-  function openContribute(g: SavingsGoalItem) {
-    const matching = accounts.find((a) => a.currency === g.currency);
-    setAccountId(matching?.id ?? '');
-    setContributing(g);
-  }
-
-  const compatibleAccounts = contributing
-    ? accounts.filter((a) => a.currency === contributing.currency)
-    : accounts;
 
   return (
     <>
@@ -128,87 +89,19 @@ export function SavingsList({ items, accounts }: Props) {
                       {formatAmount(target, g.currency as CurrencyCode)}
                     </span>
                   </p>
-                  <Progress
-                    className="mt-2"
-                    value={Math.min(100, pct)}
-                    indicatorClassName={reached ? 'bg-[color:var(--success)]' : 'bg-primary'}
-                  />
+                  <Progress className="mt-2" value={Math.min(100, pct)} />
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {pct}% — aporte {formatAmount(monthly, g.currency as CurrencyCode)}/mes
+                    {pct}% — aporte sugerido {formatAmount(monthly, g.currency as CurrencyCode)}/mes
+                  </p>
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    Aporta usando un movimiento tipo "Aporte a meta de ahorro".
                   </p>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full"
-                  onClick={() => openContribute(g)}
-                  disabled={reached}
-                >
-                  Registrar aporte
-                </Button>
               </CardContent>
             </Card>
           );
         })}
       </div>
-
-      <Dialog open={!!contributing} onOpenChange={(o) => !o && setContributing(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Aportar a {contributing?.name}</DialogTitle>
-            <DialogDescription>
-              Resta del saldo de la cuenta de origen y suma al acumulado de la meta.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-3">
-            <div className="grid gap-2">
-              <Label htmlFor="contribute-amount">Monto</Label>
-              <MoneyInput
-                id="contribute-amount"
-                autoFocus
-                className="font-mono tabular-nums"
-                value={amount}
-                onChange={setAmount}
-              />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="contribute-account">Cuenta de origen</Label>
-              {compatibleAccounts.length === 0 ? (
-                <p className="text-xs text-destructive">
-                  No hay cuentas en {contributing?.currency}. Crea una primero.
-                </p>
-              ) : (
-                <Select value={accountId} onValueChange={setAccountId}>
-                  <SelectTrigger id="contribute-account">
-                    <SelectValue placeholder="Selecciona cuenta" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {compatibleAccounts.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.name} · {a.currency}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setContributing(null)}>
-              Cancelar
-            </Button>
-            <Button
-              disabled={contribute.isPending || !amount || !accountId}
-              onClick={() => {
-                if (!contributing || !amount || !accountId) return;
-                contribute.execute({ id: contributing.id, amount, accountId });
-              }}
-            >
-              {contribute.isPending ? 'Guardando…' : 'Aportar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
         <DialogContent>

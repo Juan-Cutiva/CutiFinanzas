@@ -42,7 +42,7 @@ export async function GET(_req: NextRequest) {
   ]);
 
   const payload = {
-    schema: 'cutifinanzas/v1',
+    schema: 'cutifinanzas/v2',
     exportedAt: new Date().toISOString(),
     user: {
       id: user.id,
@@ -51,7 +51,7 @@ export async function GET(_req: NextRequest) {
       defaultCurrency: user.defaultCurrency,
       locale: user.locale,
       timezone: user.timezone,
-      payFrequency: user.payFrequency,
+      payAnchorDates: user.payAnchorDates,
     },
     accounts: serialize(accs),
     categories: serialize(cats),

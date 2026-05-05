@@ -40,7 +40,6 @@ export function SavingsGoalForm({ defaultCurrency, onSuccess }: Props) {
     defaultValues: {
       name: '',
       targetAmount: 0,
-      currentAmount: 0,
       monthlyContribution: 0,
       currency: defaultCurrency,
       startDate: dayjs().format('YYYY-MM-DD'),
@@ -102,48 +101,26 @@ export function SavingsGoalForm({ defaultCurrency, onSuccess }: Props) {
           )}
         />
 
-        <div className="grid grid-cols-2 gap-3">
-          <FormField
-            control={form.control}
-            name="targetAmount"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Meta</FormLabel>
-                <FormControl>
-                  <MoneyInput
-                    className="font-mono tabular-nums"
-                    value={field.value as number | undefined}
-                    onChange={field.onChange}
-                    onBlur={field.onBlur}
-                    name={field.name}
-                    ref={field.ref}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-          <FormField
-            control={form.control}
-            name="currentAmount"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Ya tengo</FormLabel>
-                <FormControl>
-                  <MoneyInput
-                    className="font-mono tabular-nums"
-                    value={field.value as number | undefined}
-                    onChange={field.onChange}
-                    onBlur={field.onBlur}
-                    name={field.name}
-                    ref={field.ref}
-                  />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-        </div>
+        <FormField
+          control={form.control}
+          name="targetAmount"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Meta</FormLabel>
+              <FormControl>
+                <MoneyInput
+                  className="font-mono tabular-nums"
+                  value={field.value as number | undefined}
+                  onChange={field.onChange}
+                  onBlur={field.onBlur}
+                  name={field.name}
+                  ref={field.ref}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
 
         <FormField
           control={form.control}

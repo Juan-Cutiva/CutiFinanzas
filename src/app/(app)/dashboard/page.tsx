@@ -3,18 +3,23 @@ import type { Metadata } from 'next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { getOrCreateUser } from '@/db/queries/users';
-import { listAccountsWithBalanceAsOf } from '@/features/accounts/queries';
 import {
   annualToMonthlyRate,
   calculateRemainingMonths,
   debtProgress,
 } from '@/features/debts/domain';
-import { listDebtsWithBalanceAsOf } from '@/features/debts/queries';
-import { listSavingsGoals } from '@/features/savings/queries';
-import { totalsByMonth, totalsForRange } from '@/features/transactions/queries';
+import {
+  getPeriodTotals,
+  isAsset,
+  listAccountsWithBalances,
+  listDebtsWithState,
+  listSavingsGoalsWithState,
+  monthRange,
+  subPeriodsForMonth,
+} from '@/lib/accounting';
 import { dayjs, formatAmount, nowInTz } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
-import { type PayFrequency, periodsForMonth } from '@/lib/periods';
+import type { UserId } from '@/types/ids';
 
 export const metadata: Metadata = { title: 'Resumen' };
 export const dynamic = 'force-dynamic';
@@ -37,7 +42,7 @@ interface PageProps {
 
 export default async function DashboardPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
-  const userId = user.id as never;
+  const userId = user.id as UserId;
   const currency = user.defaultCurrency as CurrencyCode;
   const params = await searchParams;
   const now = nowInTz(user.timezone);
@@ -45,51 +50,44 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
   const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
 
-  const periods = periodsForMonth(year, month, user.payFrequency as PayFrequency);
-
-  // El balance se calcula al cierre del último día del mes seleccionado.
-  const lastDayOfMonth = new Date(year, month, 0).getDate();
-  const endOfMonthIso = `${year}-${String(month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
   const todayIso = now.format('YYYY-MM-DD');
-  const isFutureMonth = endOfMonthIso > todayIso;
+  const { from, to } = monthRange(year, month);
+  const isFutureMonth = to > todayIso;
 
-  const [accounts, accountsToday, totals, goals, debts, periodTotals] = await Promise.all([
-    listAccountsWithBalanceAsOf(userId, endOfMonthIso),
-    isFutureMonth ? listAccountsWithBalanceAsOf(userId, todayIso) : Promise.resolve(null),
-    totalsByMonth(userId, year, month),
-    listSavingsGoals(userId),
-    listDebtsWithBalanceAsOf(userId, endOfMonthIso),
-    Promise.all(periods.map((p) => totalsForRange(userId, p.from, p.to))),
+  const subPeriods = subPeriodsForMonth(year, month, user.payAnchorDates ?? [6, 21]);
+
+  const [accounts, totals, savingsState, debtsState, subPeriodTotals] = await Promise.all([
+    listAccountsWithBalances(userId, to, todayIso),
+    getPeriodTotals(userId, from, to, { includeVirtuals: isFutureMonth, today: todayIso }),
+    listSavingsGoalsWithState(userId, todayIso),
+    listDebtsWithState(userId, to, todayIso),
+    Promise.all(
+      subPeriods.map((p) =>
+        getPeriodTotals(userId, p.from, p.to, { includeVirtuals: isFutureMonth, today: todayIso }),
+      ),
+    ),
   ]);
 
-  const incomeMajor = totals.incomeMinor / 100;
-  const expenseMajor =
-    (totals.expenseFixedMinor +
-      totals.expenseVariableMinor +
-      totals.debtPaymentMinor +
-      totals.savingsContributionMinor) /
-    100;
-  const savedMajor = totals.savingsContributionMinor / 100;
-  const goalsTotalCurrent = goals
+  const incomeMajor = Number(totals.incomeMinor) / 100;
+  const expenseMajor = Number(totals.expenseMinor) / 100;
+  const savedMajor = Number(totals.savingsMinor) / 100;
+  const goalsTotalCurrent = savingsState
     .filter((g) => g.currency === currency)
     .reduce((acc, g) => acc + Number(g.currentAmountMinor) / 100, 0);
 
   const sameCurrency = accounts.filter((a) => a.currency === currency);
-  const assetBalanceMajor = sameCurrency
-    .filter((a) => a.classification === 'asset')
-    .reduce((acc, a) => acc + Number(a.balanceMinor) / 100, 0);
-  const liabilityBalanceMajor = sameCurrency
-    .filter((a) => a.classification === 'liability')
-    .reduce((acc, a) => acc + Number(a.balanceMinor) / 100, 0);
-
-  const assetBalanceTodayMajor = accountsToday
-    ? accountsToday
-        .filter((a) => a.currency === currency && a.classification === 'asset')
-        .reduce((acc, a) => acc + Number(a.balanceMinor) / 100, 0)
-    : assetBalanceMajor;
+  const assetBalanceProj = sameCurrency
+    .filter((a) => isAsset(a.type))
+    .reduce((acc, a) => acc + Number(a.projectedMinor) / 100, 0);
+  const assetBalanceToday = sameCurrency
+    .filter((a) => isAsset(a.type))
+    .reduce((acc, a) => acc + Number(a.realMinor) / 100, 0);
+  const ccDebtToday = sameCurrency
+    .filter((a) => !isAsset(a.type))
+    .reduce((acc, a) => acc + Number(a.realMinor) / 100, 0);
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-6">
+    <div className="mx-auto w-full max-w-5xl space-y-6">
       <header>
         <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">
           {greeting(user.timezone)}
@@ -112,13 +110,13 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         <KpiCard
           icon={<Wallet className="size-4 text-primary" aria-hidden />}
           label={isFutureMonth ? 'Balance proyectado fin de mes' : 'Balance disponible'}
-          value={formatAmount(assetBalanceMajor, currency)}
-          tone={assetBalanceMajor >= 0 ? 'positive' : 'negative'}
+          value={formatAmount(assetBalanceProj, currency)}
+          tone={assetBalanceProj >= 0 ? 'positive' : 'negative'}
           hint={
             isFutureMonth
-              ? `Hoy: ${formatAmount(assetBalanceTodayMajor, currency)} — los pagos fijos se aplican al pasar la fecha.`
-              : liabilityBalanceMajor > 0
-                ? `Deuda en tarjetas ${formatAmount(liabilityBalanceMajor, currency)} (no incluida)`
+              ? `Hoy: ${formatAmount(assetBalanceToday, currency)} — los pagos fijos se aplican al pasar la fecha.`
+              : ccDebtToday > 0
+                ? `Deuda en tarjetas: ${formatAmount(ccDebtToday, currency)}`
                 : 'Solo cuentas en efectivo, débito y ahorros'
           }
         />
@@ -130,19 +128,21 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         />
       </section>
 
-      {periods.length > 1 ? (
+      {subPeriods.length > 1 ? (
         <Card>
           <CardHeader>
             <CardTitle>Balance por período</CardTitle>
             <CardDescription>
-              Cálculo según tu frecuencia de pago configurada en Ajustes.
+              Cortes en tus días de cobro ({(user.payAnchorDates ?? [6, 21]).join(' y ')}).
             </CardDescription>
           </CardHeader>
-          <CardContent className="grid gap-3 sm:grid-cols-2 ">
-            {periods.map((p, i) => {
-              const t = periodTotals[i];
+          <CardContent className="grid gap-3 sm:grid-cols-2">
+            {subPeriods.map((p, i) => {
+              const t = subPeriodTotals[i];
               if (!t) return null;
-              const balance = t.balanceMinor / 100;
+              const inc = Number(t.incomeMinor) / 100;
+              const exp = Number(t.expenseMinor) / 100;
+              const balance = inc - exp;
               return (
                 <div key={p.label} className="rounded-lg border border-border/60 bg-muted/30 p-4">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -156,8 +156,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
                     {formatAmount(balance, currency, { signDisplay: 'always' })}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    Ingresos {formatAmount(t.incomeMinor / 100, currency)} · Gastos{' '}
-                    {formatAmount(t.expenseMinor / 100, currency)}
+                    Ingresos {formatAmount(inc, currency)} · Gastos {formatAmount(exp, currency)}
                   </p>
                 </div>
               );
@@ -167,17 +166,17 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-2">
-        {goals.length > 0 ? (
+        {savingsState.length > 0 ? (
           <Card>
             <CardHeader>
               <CardTitle>Metas de ahorro</CardTitle>
               <CardDescription>Progreso hacia cada objetivo.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {goals.map((g) => {
+              {savingsState.map((g) => {
                 const target = Number(g.targetAmountMinor) / 100;
                 const current = Number(g.currentAmountMinor) / 100;
-                const pct = target > 0 ? Math.round((current / target) * 100) : 0;
+                const pct = Math.round(g.progress * 100);
                 return (
                   <div key={g.id}>
                     <div className="flex items-center justify-between text-sm">
@@ -187,11 +186,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
                         {formatAmount(target, g.currency as CurrencyCode)}
                       </span>
                     </div>
-                    <Progress
-                      className="mt-1.5"
-                      value={Math.min(100, pct)}
-                      indicatorClassName={pct >= 100 ? 'bg-[color:var(--success)]' : 'bg-primary'}
-                    />
+                    <Progress className="mt-1.5" value={Math.min(100, pct)} />
                     <p className="mt-1 text-xs text-muted-foreground">{pct}%</p>
                   </div>
                 );
@@ -200,38 +195,32 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           </Card>
         ) : null}
 
-        {debts.length > 0 ? (
+        {debtsState.length > 0 ? (
           <Card>
             <CardHeader>
-              <CardTitle>Deudas activas</CardTitle>
-              <CardDescription>Saldo restante y % pagado.</CardDescription>
+              <CardTitle>Préstamos activos</CardTitle>
+              <CardDescription>Saldo restante y proyección fin de mes.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              {debts.map((d) => {
-                const initial = Number(d.initialAmountMinor) / 100;
-                const balance = Number(d.currentBalanceMinor) / 100;
+              {debtsState.map((d) => {
+                const principal = Number(d.principalMinor) / 100;
+                const realBal = Number(d.realBalanceMinor) / 100;
+                const projBal = Number(d.projectedBalanceMinor) / 100;
                 const monthly = Number(d.monthlyPaymentMinor) / 100;
-                const monthlyRate = annualToMonthlyRate(
-                  d.interestRateAnnual ? Number(d.interestRateAnnual) : null,
-                );
-                const monthsLeft = calculateRemainingMonths(balance, monthlyRate, monthly);
-                const progress = Math.round(debtProgress(initial, balance) * 100);
+                const showProjection = realBal !== projBal;
+                const monthlyRate = annualToMonthlyRate(d.interestRateAnnual);
+                const monthsLeft = calculateRemainingMonths(realBal, monthlyRate, monthly);
+                const progress = Math.round(debtProgress(principal, realBal) * 100);
                 return (
                   <div key={d.id}>
                     <div className="flex items-center justify-between text-sm">
                       <span className="truncate font-medium">{d.name}</span>
                       <span className="font-mono tabular-nums text-xs text-muted-foreground">
-                        {formatAmount(balance, d.currency as CurrencyCode)} de{' '}
-                        {formatAmount(initial, d.currency as CurrencyCode)}
+                        {formatAmount(realBal, d.currency as CurrencyCode)} de{' '}
+                        {formatAmount(principal, d.currency as CurrencyCode)}
                       </span>
                     </div>
-                    <Progress
-                      className="mt-1.5"
-                      value={progress}
-                      indicatorClassName={
-                        progress >= 100 ? 'bg-[color:var(--success)]' : 'bg-primary'
-                      }
-                    />
+                    <Progress className="mt-1.5" value={progress} />
                     <p className="mt-1 text-xs text-muted-foreground">
                       {progress}% pagado
                       {monthsLeft !== null && monthsLeft > 0
@@ -239,6 +228,9 @@ export default async function DashboardPage({ searchParams }: PageProps) {
                         : monthsLeft === 0
                           ? ' · Pagada'
                           : ''}
+                      {showProjection
+                        ? ` · estimado fin de mes ${formatAmount(projBal, d.currency as CurrencyCode)}`
+                        : ''}
                     </p>
                   </div>
                 );
