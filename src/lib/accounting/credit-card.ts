@@ -41,7 +41,6 @@ export async function getCreditCardState(
         eq(transactions.userId, userId),
         eq(transactions.accountId, ccAccountId),
         eq(transactions.kind, 'cc_charge'),
-        eq(transactions.isPaid, true),
         lte(transactions.transactionDate, today),
       ),
     );
@@ -55,7 +54,6 @@ export async function getCreditCardState(
         eq(transactions.userId, userId),
         eq(transactions.counterAccountId, ccAccountId),
         eq(transactions.kind, 'cc_payment'),
-        eq(transactions.isPaid, true),
         lte(transactions.transactionDate, today),
       ),
     );

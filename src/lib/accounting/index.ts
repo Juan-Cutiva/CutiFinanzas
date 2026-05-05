@@ -19,3 +19,4 @@ export { getSavingsGoalState, listSavingsGoalsWithState, type SavingsGoalState }
 // Re-exports compartidos (mismo origen) para conveniencia en código server.
 export * from './shared';
 export { getCategoryExpenseTotals, getPeriodTotals, type PeriodTotals } from './totals';
+export { listVirtualsForMonth, type VirtualTxItem } from './virtual-list';

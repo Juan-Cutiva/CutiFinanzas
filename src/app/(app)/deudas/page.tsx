@@ -6,7 +6,7 @@ import { CreateDebtButton } from '@/features/debts/components/create-debt-button
 import { type DebtItem, DebtList } from '@/features/debts/components/debt-list';
 import { listDebtsForDashboard } from '@/features/debts/queries';
 import { monthRange } from '@/lib/accounting';
-import { dayjs, nowInTz } from '@/lib/format';
+import { formatMonthYear, nowInTz } from '@/lib/format';
 import type { UserId } from '@/types/ids';
 
 export const metadata: Metadata = { title: 'Préstamos' };
@@ -25,7 +25,7 @@ export default async function DeudasPage({ searchParams }: PageProps) {
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
   const today = now.format('YYYY-MM-DD');
   const { to } = monthRange(year, month);
-  const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
+  const monthLabel = formatMonthYear(`${year}-${String(month).padStart(2, '0')}-01`);
 
   const debtsState = await listDebtsForDashboard(userId, to, today);
   const items: DebtItem[] = debtsState.map((d) => ({

@@ -27,6 +27,9 @@ export async function getRealBalanceMinor(
 
   // Suma de impactos donde la cuenta es PRINCIPAL (accountId = X).
   // Mapeamos cada kind a +/-amount como en deltaFor().
+  // NOTA: NO filtramos por isPaid. isPaid es solo una marca visual que el
+  // usuario usa para confirmar manualmente; no debe afectar el balance ni los
+  // totales (eso duplicaría/desbalancearía la contabilidad al alternar el check).
   const principal = await db
     .select({
       sum: sql<string | null>`COALESCE(SUM(
@@ -48,7 +51,6 @@ export async function getRealBalanceMinor(
       and(
         eq(transactions.userId, userId),
         eq(transactions.accountId, accountId),
-        eq(transactions.isPaid, true),
         lte(transactions.transactionDate, asOfDate),
       ),
     );
@@ -70,7 +72,6 @@ export async function getRealBalanceMinor(
       and(
         eq(transactions.userId, userId),
         eq(transactions.counterAccountId, accountId),
-        eq(transactions.isPaid, true),
         lte(transactions.transactionDate, asOfDate),
       ),
     );
@@ -93,14 +94,20 @@ export async function getProjectedBalanceMinor(
 ): Promise<{ realMinor: bigint; projectedMinor: bigint }> {
   const real = await getRealBalanceMinor(userId, accountId, today);
   if (asOfDate <= today) {
-    // Pero si el asOfDate es PASADO, queremos el real en esa fecha, no el de hoy.
     if (asOfDate < today) {
       const past = await getRealBalanceMinor(userId, accountId, asOfDate);
       return { realMinor: past, projectedMinor: past };
     }
     return { realMinor: real, projectedMinor: real };
   }
-  // Proyección: aplicar virtuals de today (exclusivo) a asOfDate (inclusivo).
+  // Proyección al cierre de asOfDate.
+  // Incluye:
+  //   1. Todas las transacciones REALES con fecha ≤ asOfDate (incluso futuras
+  //      ya registradas, como una nómina del día 23 ya materializada).
+  //   2. Las VIRTUALES pendientes de materializar (cron aún no las creó).
+  // Las virtuales arrancan desde rule.nextOccurrenceDate, así que son disjuntas
+  // con las reales y no hay doble conteo.
+  const realAtAsOf = await getRealBalanceMinor(userId, accountId, asOfDate);
   const rules = await db
     .select()
     .from(recurringRules)
@@ -109,12 +116,12 @@ export async function getProjectedBalanceMinor(
   let delta = 0n;
   for (const r of rules) {
     const rule = ruleToVirtuals(r);
-    const virtuals = generateVirtualOccurrences(rule, today, asOfDate);
+    const virtuals = generateVirtualOccurrences(rule, asOfDate);
     for (const v of virtuals) {
       delta += deltaForAccount(v, accountId);
     }
   }
-  return { realMinor: real, projectedMinor: real + delta };
+  return { realMinor: real, projectedMinor: realAtAsOf + delta };
 }
 
 function ruleToVirtuals(r: typeof recurringRules.$inferSelect): RecurringRuleForVirtuals {
@@ -128,6 +135,7 @@ function ruleToVirtuals(r: typeof recurringRules.$inferSelect): RecurringRuleFor
     dayOfWeek: r.dayOfWeek,
     startDate: r.startDate,
     endDate: r.endDate,
+    nextOccurrenceDate: r.nextOccurrenceDate,
     accountId: r.accountId,
     counterAccountId: r.counterAccountId,
     categoryId: r.categoryId,

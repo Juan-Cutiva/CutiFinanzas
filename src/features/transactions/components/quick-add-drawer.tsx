@@ -18,6 +18,7 @@ interface AccountOption {
   currency: string;
   type: string;
   realMinor?: string;
+  projectedMinor?: string;
   creditLimitMinor?: string | null;
 }
 interface CategoryOption {

@@ -37,7 +37,6 @@ export async function categoryInsights(
       .where(
         and(
           eq(transactions.userId, userId),
-          eq(transactions.isPaid, true),
           inArray(transactions.kind, EXPENSE_KINDS as TransactionKind[]),
           between(transactions.transactionDate, currentFrom, currentTo),
         ),
@@ -52,7 +51,6 @@ export async function categoryInsights(
       .where(
         and(
           eq(transactions.userId, userId),
-          eq(transactions.isPaid, true),
           inArray(transactions.kind, EXPENSE_KINDS as TransactionKind[]),
           between(transactions.transactionDate, baselineFrom, baselineTo),
         ),

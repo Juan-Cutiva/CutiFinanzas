@@ -7,7 +7,7 @@ import { CreateBudgetButton } from '@/features/budgets/components/create-budget-
 import { listBudgetsByMonth } from '@/features/budgets/queries';
 import { listCategoriesByUser } from '@/features/categories/queries';
 import { getCategoryExpenseTotals, monthRange } from '@/lib/accounting';
-import { dayjs, nowInTz } from '@/lib/format';
+import { formatMonthYear, nowInTz } from '@/lib/format';
 import type { UserId } from '@/types/ids';
 
 export const metadata: Metadata = { title: 'Presupuestos' };
@@ -24,7 +24,7 @@ export default async function PresupuestosPage({ searchParams }: PageProps) {
   const now = nowInTz(user.timezone);
   const year = Number.parseInt(params.y ?? String(now.year()), 10);
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
-  const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
+  const monthLabel = formatMonthYear(`${year}-${String(month).padStart(2, '0')}-01`);
 
   const { from, to } = monthRange(year, month);
   const [budgets, categories, byCategory] = await Promise.all([

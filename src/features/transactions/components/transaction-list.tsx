@@ -5,6 +5,8 @@ import {
   ArrowLeftRight,
   ArrowUpRight,
   CreditCard,
+  Eye,
+  Pencil,
   PiggyBank,
   Trash2,
   Wallet,
@@ -28,6 +30,8 @@ import { dayjs, formatAmount, formatDate } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { deleteRecurringAction, deleteTransactionAction, togglePaidAction } from '../actions';
+import { type EditableTx, EditTransactionDialog } from './edit-transaction-dialog';
+import { type ViewableTx, ViewTransactionDialog } from './view-transaction-dialog';
 
 export interface TxListItem {
   id: string;
@@ -50,13 +54,15 @@ export interface TxListItem {
   category: { name: string; color: string; icon: string } | null;
   debt?: { name: string } | null;
   savingsGoal?: { name: string } | null;
+  /** True para ocurrencias proyectadas (cron aún no las materializa). */
+  isVirtual?: boolean;
 }
 
 function groupByDay(items: TxListItem[]): Record<string, TxListItem[]> {
   const out: Record<string, TxListItem[]> = {};
   for (const it of items) {
     if (!out[it.transactionDate]) out[it.transactionDate] = [];
-    out[it.transactionDate]!.push(it);
+    out[it.transactionDate].push(it);
   }
   return out;
 }
@@ -80,6 +86,8 @@ interface Props {
 export function TransactionList({ items }: Props) {
   const [pendingDelete, setPendingDelete] = useState<TxListItem | null>(null);
   const [deleteScope, setDeleteScope] = useState<'this_one' | 'forward'>('this_one');
+  const [viewing, setViewing] = useState<ViewableTx | null>(null);
+  const [editing, setEditing] = useState<EditableTx | null>(null);
 
   const deleteOnce = useAction(deleteTransactionAction, {
     onSuccess: () => {
@@ -104,7 +112,10 @@ export function TransactionList({ items }: Props) {
 
   const { grouped, days } = useMemo(() => {
     const g = groupByDay(items);
-    return { grouped: g, days: Object.keys(g).sort((a, b) => (a < b ? 1 : -1)) };
+    return {
+      grouped: g,
+      days: Object.keys(g).sort((a, b) => (a < b ? 1 : -1)),
+    };
   }, [items]);
 
   function executeDelete() {
@@ -154,6 +165,36 @@ export function TransactionList({ items }: Props) {
                     <TxRow
                       key={tx.id}
                       tx={tx}
+                      onView={() =>
+                        setViewing({
+                          id: tx.id,
+                          kind: tx.kind,
+                          amountMinor: tx.amountMinor,
+                          currency: tx.currency,
+                          transactionDate: tx.transactionDate,
+                          description: tx.description,
+                          notes: tx.notes,
+                          receiptUrl: tx.receiptUrl,
+                          recurringRuleId: tx.recurringRuleId,
+                          account: tx.account ? { name: tx.account.name } : null,
+                          counterAccount: tx.counterAccount,
+                          category: tx.category,
+                          debt: tx.debt,
+                          savingsGoal: tx.savingsGoal,
+                        })
+                      }
+                      onEdit={() =>
+                        setEditing({
+                          id: tx.id,
+                          kind: tx.kind,
+                          amountMinor: tx.amountMinor,
+                          currency: tx.currency,
+                          transactionDate: tx.transactionDate,
+                          description: tx.description,
+                          notes: tx.notes,
+                          recurringRuleId: tx.recurringRuleId,
+                        })
+                      }
                       onDelete={() => {
                         setDeleteScope('this_one');
                         setPendingDelete(tx);
@@ -226,22 +267,28 @@ export function TransactionList({ items }: Props) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ViewTransactionDialog tx={viewing} onClose={() => setViewing(null)} />
+      <EditTransactionDialog tx={editing} onClose={() => setEditing(null)} />
     </>
   );
 }
 
 interface RowProps {
   tx: TxListItem;
+  onView: () => void;
+  onEdit: () => void;
   onDelete: () => void;
 }
 
-function TxRow({ tx, onDelete }: RowProps) {
+function TxRow({ tx, onView, onEdit, onDelete }: RowProps) {
   const expense = isExpenseOfMonth(tx.kind);
   const income = isIncomeOfMonth(tx.kind);
   const internal =
     tx.kind === 'transfer' || tx.kind === 'cc_charge' || tx.kind === 'savings_contribution';
   const amountMajor = Number(tx.amountMinor) / 100;
   const Icon = iconForKind(tx.kind);
+  const isVirtual = tx.isVirtual === true;
 
   const togglePaid = useAction(togglePaidAction, {
     onError: ({ error }) => toast.error(error.serverError ?? 'No se pudo actualizar'),
@@ -258,16 +305,26 @@ function TxRow({ tx, onDelete }: RowProps) {
     <li
       className={cn(
         'group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30',
-        !tx.isPaid && 'opacity-60',
+        isVirtual && 'opacity-70',
+        !tx.isPaid && !isVirtual && 'opacity-60',
       )}
     >
-      <Checkbox
-        checked={tx.isPaid}
-        aria-label={tx.isPaid ? 'Marcar como pendiente' : 'Marcar como confirmado'}
-        disabled={togglePaid.isPending}
-        onCheckedChange={(checked) => togglePaid.execute({ id: tx.id, isPaid: checked === true })}
-        className="shrink-0"
-      />
+      {isVirtual ? (
+        <span
+          role="img"
+          className="grid size-4 shrink-0 place-items-center rounded border border-dashed border-muted-foreground/40"
+          aria-label="Programado, aún no aplicado"
+          title="Aún no se aplica — el cron lo materializará en su fecha"
+        />
+      ) : (
+        <Checkbox
+          checked={tx.isPaid}
+          aria-label={tx.isPaid ? 'Marcar como pendiente' : 'Marcar como confirmado'}
+          disabled={togglePaid.isPending}
+          onCheckedChange={(checked) => togglePaid.execute({ id: tx.id, isPaid: checked === true })}
+          className="shrink-0"
+        />
+      )}
       <div
         className="grid size-10 shrink-0 place-items-center rounded-full"
         style={{
@@ -289,7 +346,14 @@ function TxRow({ tx, onDelete }: RowProps) {
               tx.savingsGoal?.name ||
               'Movimiento'}
           </span>
-          {tx.recurringRuleId ? (
+          {isVirtual ? (
+            <span
+              className="shrink-0 rounded bg-[color:var(--info)]/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--info)]"
+              title="Programado — el cron lo creará al llegar la fecha"
+            >
+              Programado
+            </span>
+          ) : tx.recurringRuleId ? (
             <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
               Recurrente
             </span>
@@ -323,15 +387,37 @@ function TxRow({ tx, onDelete }: RowProps) {
             signDisplay: income || expense ? 'always' : 'auto',
           })}
         </span>
-        <Button
-          size="icon"
-          variant="ghost"
-          aria-label="Eliminar movimiento"
-          className="size-9 transition-opacity md:size-8 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-          onClick={onDelete}
-        >
-          <Trash2 className="size-4 text-muted-foreground" />
-        </Button>
+        {!isVirtual ? (
+          <>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Ver detalles"
+              className="size-9 transition-opacity md:size-8 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+              onClick={onView}
+            >
+              <Eye className="size-4 text-muted-foreground" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Editar movimiento"
+              className="size-9 transition-opacity md:size-8 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+              onClick={onEdit}
+            >
+              <Pencil className="size-4 text-muted-foreground" />
+            </Button>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Eliminar movimiento"
+              className="size-9 transition-opacity md:size-8 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+              onClick={onDelete}
+            >
+              <Trash2 className="size-4 text-muted-foreground" />
+            </Button>
+          </>
+        ) : null}
       </div>
     </li>
   );

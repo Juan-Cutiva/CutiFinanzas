@@ -1,5 +1,7 @@
 import dayjs from 'dayjs';
-import 'dayjs/locale/es';
+// Importamos el locale como OBJETO (no side-effect) para garantizar que el
+// bundler no lo tree-shake. Luego lo registramos explícitamente.
+import esLocale from 'dayjs/locale/es';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
@@ -16,7 +18,7 @@ dayjs.extend(isSameOrAfter);
 dayjs.extend(isSameOrBefore);
 dayjs.extend(utc);
 dayjs.extend(timezone);
-dayjs.locale('es');
+dayjs.locale(esLocale);
 
 /**
  * "Now" en la timezone del usuario. Usar SIEMPRE en pages server-side
@@ -25,10 +27,19 @@ dayjs.locale('es');
  */
 export function nowInTz(tz: string): dayjs.Dayjs {
   try {
-    return dayjs().tz(tz);
+    return dayjs().tz(tz).locale('es');
   } catch {
-    return dayjs();
+    return dayjs().locale('es');
   }
+}
+
+/**
+ * Wrapper que garantiza locale español. Usa esta función en lugar de
+ * `dayjs(...).format(...)` para evitar que se cuele formato en inglés
+ * en client bundles donde `dayjs.locale('es')` global no surtió efecto.
+ */
+function fmt(date: Date | string | number, format: string): string {
+  return dayjs(date).locale('es').format(format);
 }
 
 const MINUS_SIGN = '−';
@@ -82,19 +93,19 @@ export function formatPercent(n: number, locale = 'es-CO', digits = 1): string {
 }
 
 export function formatDate(date: Date | string | number, format = 'D MMM YYYY'): string {
-  return dayjs(date).format(format);
+  return fmt(date, format);
 }
 
 export function formatDateLong(date: Date | string | number): string {
-  return dayjs(date).format('DD [de] MMMM [de] YYYY');
+  return fmt(date, 'DD [de] MMMM [de] YYYY');
 }
 
 export function formatRelative(date: Date | string | number): string {
-  return dayjs(date).fromNow();
+  return dayjs(date).locale('es').fromNow();
 }
 
 export function formatMonthYear(date: Date | string | number): string {
-  return dayjs(date).format('MMMM YYYY');
+  return fmt(date, 'MMMM YYYY');
 }
 
 export function getQuincena(date: Date | string | number): 1 | 2 {

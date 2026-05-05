@@ -41,6 +41,7 @@ export function DebtForm({ defaultCurrency, onSuccess }: Props) {
     defaultValues: {
       name: '',
       principal: 0,
+      currentBalance: 0,
       currency: defaultCurrency,
       interestRateAnnual: undefined,
       monthlyPayment: 0,
@@ -101,26 +102,48 @@ export function DebtForm({ defaultCurrency, onSuccess }: Props) {
           )}
         />
 
-        <FormField
-          control={form.control}
-          name="principal"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Capital inicial</FormLabel>
-              <FormControl>
-                <MoneyInput
-                  className="font-mono tabular-nums"
-                  value={field.value as number | undefined}
-                  onChange={field.onChange}
-                  onBlur={field.onBlur}
-                  name={field.name}
-                  ref={field.ref}
-                />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
-        />
+        <div className="grid grid-cols-2 gap-3">
+          <FormField
+            control={form.control}
+            name="principal"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Capital inicial</FormLabel>
+                <FormControl>
+                  <MoneyInput
+                    className="font-mono tabular-nums"
+                    value={field.value as number | undefined}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    name={field.name}
+                    ref={field.ref}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="currentBalance"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Capital actual</FormLabel>
+                <FormControl>
+                  <MoneyInput
+                    className="font-mono tabular-nums"
+                    value={field.value as number | undefined}
+                    onChange={field.onChange}
+                    onBlur={field.onBlur}
+                    name={field.name}
+                    ref={field.ref}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <FormField

@@ -21,7 +21,7 @@ import {
 import { listPaymentsForDebt } from '@/features/transactions/queries';
 import { monthRange } from '@/lib/accounting';
 import type { TransactionKind } from '@/lib/accounting/shared';
-import { dayjs, formatAmount, formatDate, nowInTz } from '@/lib/format';
+import { formatAmount, formatDate, formatMonthYear, nowInTz } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import type { UserId } from '@/types/ids';
 
@@ -44,7 +44,7 @@ export default async function DebtDetailPage({ params, searchParams }: Props) {
   const month = Number.parseInt(sp.m ?? String(now.month() + 1), 10);
   const today = now.format('YYYY-MM-DD');
   const { to } = monthRange(year, month);
-  const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
+  const monthLabel = formatMonthYear(`${year}-${String(month).padStart(2, '0')}-01`);
 
   const [debtState, payments] = await Promise.all([
     getDebtForDetail(userId, id, to, today),

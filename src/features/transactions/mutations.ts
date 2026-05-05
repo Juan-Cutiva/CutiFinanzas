@@ -158,80 +158,82 @@ export async function updateRecurring(userId: UserId, input: UpdateRecurringInpu
   const cutoffDate = tx.transactionDate;
   const dayBefore = dayjs(cutoffDate).subtract(1, 'day').format('YYYY-MM-DD');
 
-  return db.transaction(async (trx) => {
-    await trx
-      .update(recurringRules)
-      .set({ endDate: dayBefore, isActive: false, updatedAt: sql`now()` })
-      .where(eq(recurringRules.id, oldRule.id));
-
-    const newAmountMinor =
-      input.amount !== undefined
-        ? amountMajorToMinor(input.amount, oldRule.currency as CurrencyCode)
-        : (oldRule.amountMinor as bigint);
-    const next = nextOccurrenceFor(
-      cutoffDate,
-      oldRule.frequency as 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly',
+  // Sin db.transaction: neon-http no soporta sesiones. Operamos secuencial.
+  // Orden: borrar ocurrencias futuras de la regla vieja → crear nueva regla
+  // → cerrar regla vieja → materializar primera ocurrencia de la nueva.
+  // Si algo falla a media, la regla vieja sigue activa (estado consistente).
+  await db
+    .delete(transactions)
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        eq(transactions.recurringRuleId, oldRule.id),
+        gte(transactions.transactionDate, cutoffDate),
+      ),
     );
 
-    const [newRule] = await trx
-      .insert(recurringRules)
-      .values({
-        userId,
-        accountId: input.accountId ?? oldRule.accountId,
-        counterAccountId:
-          input.counterAccountId !== undefined ? input.counterAccountId : oldRule.counterAccountId,
-        categoryId: input.categoryId !== undefined ? input.categoryId : oldRule.categoryId,
-        debtId: oldRule.debtId,
-        savingsGoalId: oldRule.savingsGoalId,
-        kind: oldRule.kind,
-        name: oldRule.name,
-        amountMinor: newAmountMinor,
-        currency: oldRule.currency,
-        frequency: oldRule.frequency,
-        dayOfMonth: oldRule.dayOfMonth,
-        dayOfWeek: oldRule.dayOfWeek,
-        startDate: cutoffDate,
-        endDate: oldRule.endDate,
-        nextOccurrenceDate: next,
-        isActive: true,
-        supersedesId: oldRule.id,
-      })
-      .returning();
-    if (!newRule) throw new Error('No se pudo crear la nueva versión');
+  const newAmountMinor =
+    input.amount !== undefined
+      ? amountMajorToMinor(input.amount, oldRule.currency as CurrencyCode)
+      : (oldRule.amountMinor as bigint);
+  const next = nextOccurrenceFor(
+    cutoffDate,
+    oldRule.frequency as 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly',
+  );
 
-    await trx
-      .delete(transactions)
-      .where(
-        and(
-          eq(transactions.userId, userId),
-          eq(transactions.recurringRuleId, oldRule.id),
-          gte(transactions.transactionDate, cutoffDate),
-        ),
-      );
+  const [newRule] = await db
+    .insert(recurringRules)
+    .values({
+      userId,
+      accountId: input.accountId ?? oldRule.accountId,
+      counterAccountId:
+        input.counterAccountId !== undefined ? input.counterAccountId : oldRule.counterAccountId,
+      categoryId: input.categoryId !== undefined ? input.categoryId : oldRule.categoryId,
+      debtId: oldRule.debtId,
+      savingsGoalId: oldRule.savingsGoalId,
+      kind: oldRule.kind,
+      name: oldRule.name,
+      amountMinor: newAmountMinor,
+      currency: oldRule.currency,
+      frequency: oldRule.frequency,
+      dayOfMonth: oldRule.dayOfMonth,
+      dayOfWeek: oldRule.dayOfWeek,
+      startDate: cutoffDate,
+      endDate: oldRule.endDate,
+      nextOccurrenceDate: next,
+      isActive: true,
+      supersedesId: oldRule.id,
+    })
+    .returning();
+  if (!newRule) throw new Error('No se pudo crear la nueva versión');
 
-    const [row] = await trx
-      .insert(transactions)
-      .values({
-        userId,
-        accountId: newRule.accountId,
-        counterAccountId: newRule.counterAccountId,
-        categoryId: newRule.categoryId,
-        debtId: newRule.debtId,
-        savingsGoalId: newRule.savingsGoalId,
-        kind: newRule.kind,
-        amountMinor: newRule.amountMinor,
-        currency: newRule.currency,
-        transactionDate: cutoffDate,
-        description: input.description ?? oldRule.name,
-        notes: input.notes ?? null,
-        receiptUrl: input.receiptUrl ?? null,
-        recurringRuleId: newRule.id,
-        isPaid: true,
-      })
-      .onConflictDoNothing()
-      .returning();
-    return row ?? null;
-  });
+  await db
+    .update(recurringRules)
+    .set({ endDate: dayBefore, isActive: false, updatedAt: sql`now()` })
+    .where(eq(recurringRules.id, oldRule.id));
+
+  const [row] = await db
+    .insert(transactions)
+    .values({
+      userId,
+      accountId: newRule.accountId,
+      counterAccountId: newRule.counterAccountId,
+      categoryId: newRule.categoryId,
+      debtId: newRule.debtId,
+      savingsGoalId: newRule.savingsGoalId,
+      kind: newRule.kind,
+      amountMinor: newRule.amountMinor,
+      currency: newRule.currency,
+      transactionDate: cutoffDate,
+      description: input.description ?? oldRule.name,
+      notes: input.notes ?? null,
+      receiptUrl: input.receiptUrl ?? null,
+      recurringRuleId: newRule.id,
+      isPaid: true,
+    })
+    .onConflictDoNothing()
+    .returning();
+  return row ?? null;
 }
 
 export async function togglePaid(userId: UserId, input: TogglePaidInput) {
@@ -273,22 +275,22 @@ export async function deleteRecurring(userId: UserId, input: DeleteRecurringInpu
   const cutoff = tx.transactionDate;
   const dayBefore = dayjs(cutoff).subtract(1, 'day').format('YYYY-MM-DD');
 
-  return db.transaction(async (trx) => {
-    await trx
-      .update(recurringRules)
-      .set({ endDate: dayBefore, isActive: false, updatedAt: sql`now()` })
-      .where(eq(recurringRules.id, ruleId));
-    await trx
-      .delete(transactions)
-      .where(
-        and(
-          eq(transactions.userId, userId),
-          eq(transactions.recurringRuleId, ruleId),
-          gte(transactions.transactionDate, cutoff),
-        ),
-      );
-    return { ok: true } as const;
-  });
+  // Sin db.transaction porque neon-http no soporta sesiones; secuencial es OK
+  // para uso personal. Cierra primero la regla, luego borra ocurrencias futuras.
+  await db
+    .update(recurringRules)
+    .set({ endDate: dayBefore, isActive: false, updatedAt: sql`now()` })
+    .where(eq(recurringRules.id, ruleId));
+  await db
+    .delete(transactions)
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        eq(transactions.recurringRuleId, ruleId),
+        gte(transactions.transactionDate, cutoff),
+      ),
+    );
+  return { ok: true } as const;
 }
 
 export const ALL_TRANSACTION_KINDS: TransactionKind[] = [

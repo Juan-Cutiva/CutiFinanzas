@@ -7,8 +7,9 @@ import {
   type TxListItem,
 } from '@/features/transactions/components/transaction-list';
 import { listTransactionsByMonth } from '@/features/transactions/queries';
+import { listVirtualsForMonth } from '@/lib/accounting';
 import type { TransactionKind } from '@/lib/accounting/shared';
-import { dayjs, nowInTz } from '@/lib/format';
+import { formatMonthYear, nowInTz } from '@/lib/format';
 import type { UserId } from '@/types/ids';
 
 export const metadata: Metadata = { title: 'Transacciones' };
@@ -24,12 +25,15 @@ export default async function TransaccionesPage({ searchParams }: PageProps) {
   const now = nowInTz(user.timezone);
   const year = Number.parseInt(params.y ?? String(now.year()), 10);
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
-  const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
+  const monthLabel = formatMonthYear(`${year}-${String(month).padStart(2, '0')}-01`);
 
   const userId = user.id as UserId;
-  const items = await listTransactionsByMonth(userId, year, month);
+  const [items, virtuals] = await Promise.all([
+    listTransactionsByMonth(userId, year, month),
+    listVirtualsForMonth(userId, year, month),
+  ]);
 
-  const itemsForList: TxListItem[] = items.map((t) => ({
+  const realItems: TxListItem[] = items.map((t) => ({
     id: t.id,
     kind: t.kind as TransactionKind,
     amountMinor: t.amountMinor as bigint,
@@ -53,6 +57,10 @@ export default async function TransaccionesPage({ searchParams }: PageProps) {
     debt: t.debt ? { name: t.debt.name } : null,
     savingsGoal: t.savingsGoal ? { name: t.savingsGoal.name } : null,
   }));
+
+  const itemsForList: TxListItem[] = [...realItems, ...virtuals].sort((a, b) =>
+    a.transactionDate < b.transactionDate ? 1 : -1,
+  );
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">

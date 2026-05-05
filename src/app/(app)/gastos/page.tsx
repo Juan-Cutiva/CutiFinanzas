@@ -8,8 +8,9 @@ import {
   type TxListItem,
 } from '@/features/transactions/components/transaction-list';
 import { listExpenseByMonth } from '@/features/transactions/queries';
-import type { TransactionKind } from '@/lib/accounting/shared';
-import { dayjs, formatAmount, nowInTz } from '@/lib/format';
+import { listVirtualsForMonth } from '@/lib/accounting';
+import { EXPENSE_KINDS, type TransactionKind } from '@/lib/accounting/shared';
+import { formatAmount, formatMonthYear, nowInTz } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import type { UserId } from '@/types/ids';
 
@@ -28,20 +29,27 @@ export default async function GastosPage({ searchParams }: PageProps) {
   const now = nowInTz(user.timezone);
   const year = Number.parseInt(params.y ?? String(now.year()), 10);
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
-  const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
+  const monthLabel = formatMonthYear(`${year}-${String(month).padStart(2, '0')}-01`);
 
-  const items = await listExpenseByMonth(userId, year, month);
+  const [items, allVirtuals] = await Promise.all([
+    listExpenseByMonth(userId, year, month),
+    listVirtualsForMonth(userId, year, month),
+  ]);
+  const expenseKindsSet = new Set<TransactionKind>(EXPENSE_KINDS);
+  const virtuals = allVirtuals.filter((v) => expenseKindsSet.has(v.kind));
 
   const recurring = items.filter((t) => t.recurringRuleId);
   const confirmedCount = recurring.filter((t) => t.isPaid).length;
-  const recurringTotal = recurring.length;
-  const fijosMinor = recurring.reduce((acc, t) => acc + Number(t.amountMinor), 0);
+  const recurringTotal = recurring.length + virtuals.length;
+  const fijosMinor =
+    recurring.reduce((acc, t) => acc + Number(t.amountMinor), 0) +
+    virtuals.reduce((acc, v) => acc + Number(v.amountMinor), 0);
   const variablesMinor = items
     .filter((t) => !t.recurringRuleId)
     .reduce((acc, t) => acc + Number(t.amountMinor), 0);
   const totalMinor = fijosMinor + variablesMinor;
 
-  const itemsForList: TxListItem[] = items.map((t) => ({
+  const realItems: TxListItem[] = items.map((t) => ({
     id: t.id,
     kind: t.kind as TransactionKind,
     amountMinor: t.amountMinor as bigint,
@@ -64,6 +72,10 @@ export default async function GastosPage({ searchParams }: PageProps) {
       : null,
     debt: t.debt ? { name: t.debt.name } : null,
   }));
+
+  const itemsForList: TxListItem[] = [...realItems, ...virtuals].sort((a, b) =>
+    a.transactionDate < b.transactionDate ? 1 : -1,
+  );
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">

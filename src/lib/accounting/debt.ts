@@ -41,6 +41,7 @@ export async function getDebtState(
   if (!debt) return null;
 
   const principal = BigInt(debt.principalMinor as unknown as string | number | bigint);
+  const initialPaid = BigInt(debt.initialPaidMinor as unknown as string | number | bigint);
 
   // Pagos reales hasta today
   const paidRow = await db
@@ -54,17 +55,35 @@ export async function getDebtState(
         eq(transactions.userId, userId),
         eq(transactions.debtId, debtId),
         eq(transactions.kind, 'loan_payment'),
-        eq(transactions.isPaid, true),
         lte(transactions.transactionDate, today),
       ),
     );
   const totalPaidMinor = BigInt(paidRow[0]?.sum ?? 0);
   const paidInstallments = Number(paidRow[0]?.count ?? 0);
-  const realBalanceMinor = principal - totalPaidMinor;
+  const realBalanceMinor = principal - initialPaid - totalPaidMinor;
 
-  // Proyección: virtuals de loan_payment para esta deuda entre today (excl) y asOfDate (incl).
+  // Proyección al cierre de asOfDate. Incluye:
+  //   1. Pagos REALES con fecha ≤ asOfDate (incluso futuros ya registrados).
+  //   2. Pagos VIRTUALES pendientes de materializar (cron aún no los creó).
   let projectedBalanceMinor = realBalanceMinor;
   if (asOfDate > today) {
+    // Reales hasta asOfDate (puede incluir pagos futuros ya registrados).
+    const paidUpToAsOf = await db
+      .select({
+        sum: sql<string | null>`COALESCE(SUM(${transactions.amountMinor}), 0)`,
+      })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.debtId, debtId),
+          eq(transactions.kind, 'loan_payment'),
+          lte(transactions.transactionDate, asOfDate),
+        ),
+      );
+    const totalPaidUpToAsOf = BigInt(paidUpToAsOf[0]?.sum ?? 0);
+
+    // Virtuales pendientes de materializar (desde nextOccurrenceDate).
     const rules = await db
       .select()
       .from(recurringRules)
@@ -78,13 +97,13 @@ export async function getDebtState(
       );
     let projectedPayments = 0n;
     for (const r of rules) {
-      const v = generateVirtualOccurrences(toVirtualRule(r), today, asOfDate);
+      const v = generateVirtualOccurrences(toVirtualRule(r), asOfDate);
       for (const occ of v) projectedPayments += occ.amountMinor;
     }
-    projectedBalanceMinor = realBalanceMinor - projectedPayments;
+    projectedBalanceMinor = principal - initialPaid - totalPaidUpToAsOf - projectedPayments;
     if (projectedBalanceMinor < 0n) projectedBalanceMinor = 0n;
   } else if (asOfDate < today) {
-    // Saldo histórico: principal − pagos hasta asOfDate.
+    // Saldo histórico: principal − initialPaid − pagos hasta asOfDate.
     const past = await db
       .select({
         sum: sql<string | null>`COALESCE(SUM(${transactions.amountMinor}), 0)`,
@@ -95,11 +114,10 @@ export async function getDebtState(
           eq(transactions.userId, userId),
           eq(transactions.debtId, debtId),
           eq(transactions.kind, 'loan_payment'),
-          eq(transactions.isPaid, true),
           lte(transactions.transactionDate, asOfDate),
         ),
       );
-    projectedBalanceMinor = principal - BigInt(past[0]?.sum ?? 0);
+    projectedBalanceMinor = principal - initialPaid - BigInt(past[0]?.sum ?? 0);
   }
 
   return {
@@ -148,6 +166,7 @@ function toVirtualRule(r: typeof recurringRules.$inferSelect): RecurringRuleForV
     dayOfWeek: r.dayOfWeek,
     startDate: r.startDate,
     endDate: r.endDate,
+    nextOccurrenceDate: r.nextOccurrenceDate,
     accountId: r.accountId,
     counterAccountId: r.counterAccountId,
     categoryId: r.categoryId,

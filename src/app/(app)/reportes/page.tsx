@@ -11,7 +11,7 @@ import { CategoryInsights } from '@/features/reports/components/category-insight
 import { SankeyFlow } from '@/features/reports/components/sankey-flow';
 import { categoryInsights } from '@/features/reports/predictions';
 import { getCategoryExpenseTotals, getPeriodTotals, monthRange } from '@/lib/accounting';
-import { dayjs, formatAmount, nowInTz } from '@/lib/format';
+import { formatAmount, formatMonthYear, nowInTz } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import type { UserId } from '@/types/ids';
 
@@ -30,7 +30,7 @@ export default async function ReportesPage({ searchParams }: PageProps) {
   const now = nowInTz(user.timezone);
   const year = Number.parseInt(params.y ?? String(now.year()), 10);
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
-  const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
+  const monthLabel = formatMonthYear(`${year}-${String(month).padStart(2, '0')}-01`);
 
   const { from, to } = monthRange(year, month);
   const [totals, categories, byCategory, insights] = await Promise.all([

@@ -8,6 +8,8 @@ import { toast } from 'sonner';
 import type { z } from 'zod';
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
+import { DayOfMonthPicker, nextDateForDayOfMonth } from '@/components/ui/day-of-month-picker';
+import { DayOfWeekPicker, nextDateForDayOfWeek } from '@/components/ui/day-of-week-picker';
 import { FileUpload } from '@/components/ui/file-upload';
 import {
   Form,
@@ -47,6 +49,7 @@ interface AccountOption {
   currency: string;
   type: string;
   realMinor?: string;
+  projectedMinor?: string;
   creditLimitMinor?: string | null;
 }
 interface CategoryOption {
@@ -213,6 +216,11 @@ export function TransactionForm({
   const accountBalanceMajor = selectedAccount?.realMinor
     ? Number(BigInt(selectedAccount.realMinor)) / 100
     : 0;
+  const accountProjectedMajor = selectedAccount?.projectedMinor
+    ? Number(BigInt(selectedAccount.projectedMinor)) / 100
+    : accountBalanceMajor;
+  // Mostramos proyectado siempre (excepto para CC, que tiene su propia métrica de cupo).
+  const showProjection = selectedAccount && selectedAccount.type !== 'credit_card';
   const ccLimitMajor = selectedAccount?.creditLimitMinor
     ? Number(BigInt(selectedAccount.creditLimitMinor)) / 100
     : 0;
@@ -223,7 +231,7 @@ export function TransactionForm({
     !isIncome &&
     !isRefund &&
     !!selectedAccount &&
-    Number(watchedAmount ?? 0) > accountBalanceMajor;
+    Number(watchedAmount ?? 0) > Math.max(accountBalanceMajor, accountProjectedMajor);
   const overCcLimit = isCcCharge && !!selectedAccount && Number(watchedAmount ?? 0) > ccAvailable;
 
   const counterDebtMajor = selectedCounterAccount?.realMinor
@@ -255,12 +263,19 @@ export function TransactionForm({
   });
 
   function onSubmit(data: CreateTransactionInput) {
+    const dayOfMonth =
+      isRecurring &&
+      (recurrenceFrequency === 'monthly' || recurrenceFrequency === 'quarterly') &&
+      data.transactionDate
+        ? Number.parseInt(data.transactionDate.slice(8, 10), 10)
+        : null;
     const payload: CreateTransactionInput = {
       ...data,
       recurrence:
         isRecurring && supportsRecurring
           ? {
               frequency: recurrenceFrequency,
+              dayOfMonth,
               name:
                 recurrenceName.trim() || data.description?.trim() || KIND_LABELS_FORM[data.kind],
             }
@@ -449,7 +464,7 @@ export function TransactionForm({
                     </>
                   ) : (
                     <>
-                      Saldo disponible{' '}
+                      Saldo hoy{' '}
                       <span
                         className={`font-mono tabular-nums font-semibold ${
                           accountBalanceMajor >= 0 ? 'text-amount-positive' : 'text-amount-negative'
@@ -460,6 +475,24 @@ export function TransactionForm({
                           selectedAccount.currency as CurrencyCode,
                         )}
                       </span>
+                      {showProjection ? (
+                        <>
+                          {' '}
+                          · proyectado fin de mes{' '}
+                          <span
+                            className={`font-mono tabular-nums font-semibold ${
+                              accountProjectedMajor >= 0
+                                ? 'text-amount-positive'
+                                : 'text-amount-negative'
+                            }`}
+                          >
+                            {formatAmount(
+                              accountProjectedMajor,
+                              selectedAccount.currency as CurrencyCode,
+                            )}
+                          </span>
+                        </>
+                      ) : null}
                     </>
                   )}
                 </FormDescription>
@@ -633,19 +666,50 @@ export function TransactionForm({
           />
         ) : null}
 
-        {/* Fecha */}
+        {/* Fecha — el selector cambia según frecuencia, pero la fecha guardada
+            siempre es una YYYY-MM-DD real (la primera ocurrencia). */}
         <FormField
           control={form.control}
           name="transactionDate"
-          render={({ field }) => (
-            <FormItem>
-              <FormLabel>Fecha</FormLabel>
-              <FormControl>
-                <DatePicker value={field.value} onChange={field.onChange} />
-              </FormControl>
-              <FormMessage />
-            </FormItem>
-          )}
+          render={({ field }) => {
+            const isWeeklyMode =
+              isRecurring &&
+              (recurrenceFrequency === 'weekly' || recurrenceFrequency === 'biweekly');
+            const isDayOfMonthMode =
+              isRecurring &&
+              (recurrenceFrequency === 'monthly' || recurrenceFrequency === 'quarterly');
+            const currentDate = field.value ? new Date(`${field.value}T00:00:00`) : new Date();
+
+            return (
+              <FormItem>
+                <FormLabel>
+                  {isWeeklyMode ? 'Día de la semana' : isDayOfMonthMode ? 'Día del mes' : 'Fecha'}
+                </FormLabel>
+                <FormControl>
+                  {isWeeklyMode ? (
+                    <DayOfWeekPicker
+                      value={currentDate.getDay()}
+                      onChange={(d) => field.onChange(nextDateForDayOfWeek(d))}
+                    />
+                  ) : isDayOfMonthMode ? (
+                    <DayOfMonthPicker
+                      value={currentDate.getDate()}
+                      onChange={(d) => field.onChange(nextDateForDayOfMonth(d))}
+                    />
+                  ) : (
+                    <DatePicker value={field.value} onChange={field.onChange} />
+                  )}
+                </FormControl>
+                {isRecurring ? (
+                  <p className="text-xs text-muted-foreground">
+                    Primera ocurrencia: {field.value}. Las siguientes se materializan
+                    automáticamente.
+                  </p>
+                ) : null}
+                <FormMessage />
+              </FormItem>
+            );
+          }}
         />
 
         {/* Descripción */}

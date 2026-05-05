@@ -4,35 +4,42 @@ import { listAccountsByUser } from '@/features/accounts/queries';
 import { listCategoriesByUser } from '@/features/categories/queries';
 import { listSavingsGoalsRaw } from '@/features/savings/queries';
 import { QuickAddDrawer } from '@/features/transactions/components/quick-add-drawer';
-import { listAccountsWithBalances, listDebtsWithState } from '@/lib/accounting';
+import { listAccountsWithBalances, listDebtsWithState, monthRange } from '@/lib/accounting';
 import { nowInTz } from '@/lib/format';
 import type { UserId } from '@/types/ids';
 
 export async function QuickAddFAB() {
   const user = await getOrCreateUser();
   const userId = user.id as UserId;
-  const today = nowInTz(user.timezone).format('YYYY-MM-DD');
+  const now = nowInTz(user.timezone);
+  const today = now.format('YYYY-MM-DD');
+  const { to: endOfMonth } = monthRange(now.year(), now.month() + 1);
 
+  // Saldo real hoy + proyectado fin de mes (incluyendo recurrentes pendientes).
   const [accountsRaw, categories, accountsState, debtsState, savings] = await Promise.all([
     listAccountsByUser(userId),
     listCategoriesByUser(userId),
-    listAccountsWithBalances(userId, today, today),
+    listAccountsWithBalances(userId, endOfMonth, today),
     listDebtsWithState(userId, today, today),
     listSavingsGoalsRaw(userId),
   ]);
 
-  const balanceById = new Map(accountsState.map((a) => [a.id, a.realMinor]));
+  const stateById = new Map(accountsState.map((a) => [a.id, a]));
 
   return (
     <QuickAddDrawer
-      accounts={accountsRaw.map((a) => ({
-        id: a.id,
-        name: a.name,
-        currency: a.currency,
-        type: a.type,
-        realMinor: (balanceById.get(a.id) ?? 0n).toString(),
-        creditLimitMinor: a.creditLimitMinor ? String(a.creditLimitMinor) : null,
-      }))}
+      accounts={accountsRaw.map((a) => {
+        const st = stateById.get(a.id);
+        return {
+          id: a.id,
+          name: a.name,
+          currency: a.currency,
+          type: a.type,
+          realMinor: (st?.realMinor ?? 0n).toString(),
+          projectedMinor: (st?.projectedMinor ?? 0n).toString(),
+          creditLimitMinor: a.creditLimitMinor ? String(a.creditLimitMinor) : null,
+        };
+      })}
       categories={categories.map((c) => ({ id: c.id, name: c.name }))}
       debts={debtsState.map((d) => ({
         id: d.id,

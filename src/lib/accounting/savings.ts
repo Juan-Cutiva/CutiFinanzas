@@ -42,7 +42,6 @@ export async function listSavingsGoalsWithState(
       and(
         eq(transactions.userId, userId),
         eq(transactions.kind, 'savings_contribution'),
-        eq(transactions.isPaid, true),
         lte(transactions.transactionDate, today),
       ),
     )

@@ -2,17 +2,14 @@ import dayjs from 'dayjs';
 import type { TransactionKind } from './kinds';
 
 /**
- * Materialización VIRTUAL (en memoria) de ocurrencias de reglas recurrentes.
- * No escribe en BD — solo proyecta hacia adelante para el dashboard / saldos estimados.
+ * Materialización VIRTUAL (en memoria) de ocurrencias futuras de reglas recurrentes
+ * que aún NO existen como filas reales en `transactions`.
  *
- * Las ocurrencias REALES (ya cobradas/pagadas) viven en la tabla `transactions` y son
- * inmutables a cambios posteriores en la regla.
- *
- * Reglas de generación:
- * - Las ocurrencias se generan respetando startDate ≤ fecha ≤ (endDate ?? ∞).
- * - El cron materializa ocurrencias con fecha ≤ today.
- * - Esta función genera las pendientes (today < fecha ≤ asOfDate) — útil para proyectar
- *   saldos al fin de un mes futuro o cuotas pendientes de una deuda.
+ * IMPORTANTE — invariante para evitar doble conteo:
+ * - El cron y `createTransaction` mantienen `recurringRules.nextOccurrenceDate`
+ *   apuntando a la PRÓXIMA ocurrencia que aún NO se ha materializado.
+ * - Esta función SIEMPRE arranca desde `nextOccurrenceDate`, nunca desde `startDate`.
+ * - Así garantizamos que las virtuales sean disjuntas con las transacciones reales.
  */
 
 export type Frequency = 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly';
@@ -27,6 +24,11 @@ export interface RecurringRuleForVirtuals {
   dayOfWeek: number | null;
   startDate: string;
   endDate: string | null;
+  /**
+   * Próxima ocurrencia pendiente de materializar. Punto de partida de las virtuales.
+   * Se actualiza por el cron (al insertar una real) y por createTransaction.
+   */
+  nextOccurrenceDate: string;
   accountId: string;
   counterAccountId: string | null;
   categoryId: string | null;
@@ -50,35 +52,28 @@ export interface VirtualOccurrence {
 }
 
 /**
- * Genera las ocurrencias virtuales de una regla en el rango (fromExclusive, toInclusive].
- * Útil para proyectar pagos pendientes desde "después de hoy" hasta "fin del mes elegido".
+ * Genera las ocurrencias virtuales de una regla en `[fromInclusive, toInclusive]`.
  *
- * Si fromExclusive === toInclusive y no hay coincidencia exacta, devuelve vacío.
+ * - Arranca desde `rule.nextOccurrenceDate` (NO desde startDate, para no duplicar
+ *   con la primera ocurrencia ya materializada).
+ * - Si `fromInclusive` se omite, devuelve todas las virtuales hasta `toInclusive`.
+ * - Filtra automáticamente por `endDate` y rango activo.
  */
 export function generateVirtualOccurrences(
   rule: RecurringRuleForVirtuals,
-  fromExclusive: string,
   toInclusive: string,
+  fromInclusive?: string,
 ): VirtualOccurrence[] {
   if (!rule.isActive) return [];
-  const start = rule.startDate;
   const end = rule.endDate ?? '9999-12-31';
-
-  // Punto de partida: la primera ocurrencia que sea > fromExclusive y >= start.
-  let cursor = dayjs(start);
-  const fromEx = dayjs(fromExclusive);
-  const toIn = dayjs(toInclusive);
-
-  // avanza cursor hasta superar fromExclusive
-  if (cursor.isBefore(fromEx) || cursor.isSame(fromEx)) {
-    cursor = nextOccurrenceFrom(cursor, fromEx, rule);
-  }
-
+  let cursor = dayjs(rule.nextOccurrenceDate);
   const out: VirtualOccurrence[] = [];
-  while (cursor.isBefore(toIn) || cursor.format('YYYY-MM-DD') === toIn.format('YYYY-MM-DD')) {
+  let safety = 366;
+  while (safety-- > 0) {
     const iso = cursor.format('YYYY-MM-DD');
+    if (iso > toInclusive) break;
     if (iso > end) break;
-    if (iso >= start) {
+    if (!fromInclusive || iso >= fromInclusive) {
       out.push({
         isVirtual: true,
         ruleId: rule.id,
@@ -111,20 +106,4 @@ function advance(d: dayjs.Dayjs, rule: RecurringRuleForVirtuals): dayjs.Dayjs {
     case 'yearly':
       return d.add(1, 'year');
   }
-}
-
-function nextOccurrenceFrom(
-  start: dayjs.Dayjs,
-  afterExclusive: dayjs.Dayjs,
-  rule: RecurringRuleForVirtuals,
-): dayjs.Dayjs {
-  let cursor = start;
-  // jump hasta superar afterExclusive con paso seguro
-  while (
-    cursor.isBefore(afterExclusive) ||
-    cursor.format('YYYY-MM-DD') === afterExclusive.format('YYYY-MM-DD')
-  ) {
-    cursor = advance(cursor, rule);
-  }
-  return cursor;
 }

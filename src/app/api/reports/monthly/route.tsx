@@ -33,7 +33,9 @@ export async function GET(req: NextRequest) {
   ]);
 
   const data: MonthlyReportData = {
-    monthLabel: dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY'),
+    monthLabel: dayjs(`${year}-${String(month).padStart(2, '0')}-01`)
+      .locale('es')
+      .format('MMMM YYYY'),
     generatedAt: today.format('DD/MM/YYYY'),
     currency: user.defaultCurrency as CurrencyCode,
     totals: {

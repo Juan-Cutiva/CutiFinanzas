@@ -19,7 +19,11 @@ import { users } from './users';
  * NO incluye tarjetas de crédito (esas son `accounts.type='credit_card'`).
  *
  * El saldo restante NO se almacena — se calcula como:
- *   principalMinor − SUM(transactions.amount WHERE kind='loan_payment' AND debtId=X)
+ *   principalMinor − initialPaidMinor − SUM(transactions WHERE kind='loan_payment' AND debtId=X)
+ *
+ * `initialPaidMinor` representa lo que ya habías pagado ANTES de empezar a registrar
+ * en la app (offset histórico). Permite registrar una deuda con su saldo actual real
+ * sin tener que cargar todos los pagos previos.
  */
 export const debts = pgTable(
   'debts',
@@ -30,6 +34,7 @@ export const debts = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     name: varchar('name', { length: 200 }).notNull(),
     principalMinor: bigint('principal_minor', { mode: 'bigint' }).notNull(),
+    initialPaidMinor: bigint('initial_paid_minor', { mode: 'bigint' }).notNull().default(sql`0`),
     currency: char('currency', { length: 3 }).notNull(),
     interestRateAnnual: numeric('interest_rate_annual', { precision: 7, scale: 4 }),
     monthlyPaymentMinor: bigint('monthly_payment_minor', { mode: 'bigint' }).notNull(),

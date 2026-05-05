@@ -9,7 +9,6 @@ import { Button } from '@/components/ui/button';
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -147,10 +146,10 @@ export function PreferencesForm({ defaults }: Props) {
             value={anchorsRaw}
             onChange={(e) => setAnchorsRaw(e.target.value)}
           />
-          <FormDescription>
+          <p className="text-sm text-muted-foreground">
             Días del mes en que cobras (separados por coma). Determinan los cortes de quincena. Ej:{' '}
             <code>6, 21</code> para cobro día 6 y día 21.
-          </FormDescription>
+          </p>
         </div>
 
         <FormField

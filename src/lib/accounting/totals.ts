@@ -29,19 +29,14 @@ export async function getPeriodTotals(
   options: { includeVirtuals?: boolean; today?: string } = {},
 ): Promise<PeriodTotals> {
   const { includeVirtuals = false, today } = options;
+  // No filtramos por isPaid (es solo flag visual de confirmación manual).
   const realRows = await db
     .select({
       kind: transactions.kind,
       sum: sql<string | null>`COALESCE(SUM(${transactions.amountMinor}), 0)`,
     })
     .from(transactions)
-    .where(
-      and(
-        eq(transactions.userId, userId),
-        eq(transactions.isPaid, true),
-        between(transactions.transactionDate, from, to),
-      ),
-    )
+    .where(and(eq(transactions.userId, userId), between(transactions.transactionDate, from, to)))
     .groupBy(transactions.kind);
 
   const byKind = emptyByKind();
@@ -50,21 +45,18 @@ export async function getPeriodTotals(
   }
 
   if (includeVirtuals && today) {
-    const virtualFrom = today < from ? from : today; // exclusivo
-    const virtualTo = to;
-    if (virtualFrom < virtualTo) {
-      const rules = await db
-        .select()
-        .from(recurringRules)
-        .where(and(eq(recurringRules.userId, userId), eq(recurringRules.isActive, true)));
-      for (const r of rules) {
-        const rule = ruleToVirtual(r);
-        const occurrences = generateVirtualOccurrences(rule, virtualFrom, virtualTo);
-        for (const v of occurrences) {
-          if (v.transactionDate >= from && v.transactionDate <= to) {
-            byKind[v.kind] += v.amountMinor;
-          }
-        }
+    // Las virtuales son ocurrencias FUTURAS aún no materializadas. Se generan
+    // desde rule.nextOccurrenceDate (que ya excluye lo materializado) hasta `to`.
+    // Filtramos por `from` para mantener el rango del período.
+    const rules = await db
+      .select()
+      .from(recurringRules)
+      .where(and(eq(recurringRules.userId, userId), eq(recurringRules.isActive, true)));
+    for (const r of rules) {
+      const rule = ruleToVirtual(r);
+      const occurrences = generateVirtualOccurrences(rule, to, from);
+      for (const v of occurrences) {
+        byKind[v.kind] += v.amountMinor;
       }
     }
   }
@@ -96,7 +88,6 @@ export async function getCategoryExpenseTotals(
     .where(
       and(
         eq(transactions.userId, userId),
-        eq(transactions.isPaid, true),
         inArray(transactions.kind, EXPENSE_KINDS as TransactionKind[]),
         between(transactions.transactionDate, from, to),
       ),
@@ -133,6 +124,7 @@ function ruleToVirtual(r: typeof recurringRules.$inferSelect): RecurringRuleForV
     dayOfWeek: r.dayOfWeek,
     startDate: r.startDate,
     endDate: r.endDate,
+    nextOccurrenceDate: r.nextOccurrenceDate,
     accountId: r.accountId,
     counterAccountId: r.counterAccountId,
     categoryId: r.categoryId,

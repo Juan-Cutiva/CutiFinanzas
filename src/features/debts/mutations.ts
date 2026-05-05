@@ -11,6 +11,8 @@ import type { DebtInput, UpdateDebtInput } from './schema';
 export async function createDebt(userId: UserId, input: DebtInput) {
   const currency = input.currency as CurrencyCode;
   const principalMinor = amountMajorToMinor(input.principal, currency);
+  const currentMinor = amountMajorToMinor(input.currentBalance, currency);
+  const initialPaidMinor = principalMinor > currentMinor ? principalMinor - currentMinor : 0n;
   const monthlyMinor = amountMajorToMinor(input.monthlyPayment, currency);
 
   const [row] = await db
@@ -19,6 +21,7 @@ export async function createDebt(userId: UserId, input: DebtInput) {
       userId,
       name: input.name,
       principalMinor,
+      initialPaidMinor,
       currency,
       interestRateAnnual:
         input.interestRateAnnual !== undefined ? String(input.interestRateAnnual) : null,
@@ -43,8 +46,17 @@ export async function updateDebt(userId: UserId, input: UpdateDebtInput) {
   const currency = (rest.currency ?? existing.currency) as CurrencyCode;
   const patch: Record<string, unknown> = { updatedAt: sql`now()` };
   if (rest.name !== undefined) patch.name = rest.name;
-  if (rest.principal !== undefined)
+  if (rest.principal !== undefined) {
     patch.principalMinor = amountMajorToMinor(rest.principal, currency);
+  }
+  if (rest.currentBalance !== undefined) {
+    const principalMinor =
+      rest.principal !== undefined
+        ? amountMajorToMinor(rest.principal, currency)
+        : (existing.principalMinor as bigint);
+    const currentMinor = amountMajorToMinor(rest.currentBalance, currency);
+    patch.initialPaidMinor = principalMinor > currentMinor ? principalMinor - currentMinor : 0n;
+  }
   if (rest.monthlyPayment !== undefined)
     patch.monthlyPaymentMinor = amountMajorToMinor(rest.monthlyPayment, currency);
   if (rest.interestRateAnnual !== undefined)
