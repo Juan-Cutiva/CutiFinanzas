@@ -61,8 +61,13 @@ export interface TxListItem {
 function groupByDay(items: TxListItem[]): Record<string, TxListItem[]> {
   const out: Record<string, TxListItem[]> = {};
   for (const it of items) {
-    if (!out[it.transactionDate]) out[it.transactionDate] = [];
-    out[it.transactionDate].push(it);
+    const day = it.transactionDate;
+    let dayItems = out[day];
+    if (!dayItems) {
+      dayItems = [];
+      out[day] = dayItems;
+    }
+    dayItems.push(it);
   }
   return out;
 }
