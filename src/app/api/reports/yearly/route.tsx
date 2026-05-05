@@ -5,6 +5,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { getOrCreateUser } from '@/db/queries/users';
 import { type YearlyReportData, YearlyReportPDF } from '@/features/reports/pdf/yearly-report';
 import { totalsByMonthForYear } from '@/features/transactions/queries';
+import { nowInTz } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 
 dayjs.locale('es');
@@ -16,13 +17,16 @@ export async function GET(req: NextRequest) {
   const user = await getOrCreateUser();
   const userId = user.id as never;
   const url = new URL(req.url);
-  const year = Number.parseInt(url.searchParams.get('year') ?? String(dayjs().year()), 10);
+  const year = Number.parseInt(
+    url.searchParams.get('year') ?? String(nowInTz(user.timezone).year()),
+    10,
+  );
 
   const months = await totalsByMonthForYear(userId, year);
 
   const data: YearlyReportData = {
     year,
-    generatedAt: dayjs().format('DD/MM/YYYY'),
+    generatedAt: nowInTz(user.timezone).format('DD/MM/YYYY'),
     currency: user.defaultCurrency as CurrencyCode,
     months,
   };

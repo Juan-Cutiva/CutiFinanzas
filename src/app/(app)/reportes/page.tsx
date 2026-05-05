@@ -16,7 +16,7 @@ import {
   totalsByCategoryByMonth,
   totalsByMonth,
 } from '@/features/transactions/queries';
-import { dayjs, formatAmount } from '@/lib/format';
+import { dayjs, formatAmount, nowInTz } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 
 export const metadata: Metadata = { title: 'Reportes' };
@@ -31,7 +31,7 @@ export default async function ReportesPage({ searchParams }: PageProps) {
   const userId = user.id as never;
   const currency = user.defaultCurrency as CurrencyCode;
   const params = await searchParams;
-  const now = dayjs();
+  const now = nowInTz(user.timezone);
   const year = Number.parseInt(params.y ?? String(now.year()), 10);
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
   const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');

@@ -7,6 +7,7 @@ import { listBudgetsByMonth } from '@/features/budgets/queries';
 import { listCategoriesByUser } from '@/features/categories/queries';
 import { type MonthlyReportData, MonthlyReportPDF } from '@/features/reports/pdf/monthly-report';
 import { totalsByCategoryByMonth, totalsByMonth } from '@/features/transactions/queries';
+import { nowInTz } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 
 dayjs.locale('es');
@@ -18,7 +19,7 @@ export async function GET(req: NextRequest) {
   const user = await getOrCreateUser();
   const userId = user.id as never;
   const url = new URL(req.url);
-  const today = dayjs();
+  const today = nowInTz(user.timezone);
   const year = Number.parseInt(url.searchParams.get('year') ?? String(today.year()), 10);
   const month = Number.parseInt(url.searchParams.get('month') ?? String(today.month() + 1), 10);
 
@@ -31,7 +32,7 @@ export async function GET(req: NextRequest) {
 
   const data: MonthlyReportData = {
     monthLabel: dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY'),
-    generatedAt: dayjs().format('DD/MM/YYYY'),
+    generatedAt: today.format('DD/MM/YYYY'),
     currency: user.defaultCurrency as CurrencyCode,
     totals: {
       income: totals.incomeMinor / 100,

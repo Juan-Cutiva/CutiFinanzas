@@ -26,7 +26,7 @@ import {
 } from '@/features/debts/queries';
 import { listSavingsGoals } from '@/features/savings/queries';
 import { TransactionList } from '@/features/transactions/components/transaction-list';
-import { dayjs, formatAmount, formatDate } from '@/lib/format';
+import { dayjs, formatAmount, formatDate, nowInTz } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 
 export const metadata: Metadata = { title: 'Detalle de deuda' };
@@ -44,7 +44,7 @@ export default async function DebtDetailPage({ params, searchParams }: Props) {
   const debt = await getDebtById(user.id as never, id);
   if (!debt) notFound();
 
-  const now = dayjs();
+  const now = nowInTz(user.timezone);
   const year = Number.parseInt(sp.y ?? String(now.year()), 10);
   const month = Number.parseInt(sp.m ?? String(now.month() + 1), 10);
   const lastDay = new Date(year, month, 0).getDate();

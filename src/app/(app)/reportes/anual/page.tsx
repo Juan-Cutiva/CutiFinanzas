@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { getOrCreateUser } from '@/db/queries/users';
 import { YearlyChart } from '@/features/reports/components/yearly-chart';
 import { totalsByMonthForYear } from '@/features/transactions/queries';
-import { dayjs, formatAmount } from '@/lib/format';
+import { formatAmount, nowInTz } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 
 export const metadata: Metadata = { title: 'Reporte anual' };
@@ -20,7 +20,7 @@ export default async function ReporteAnualPage({ searchParams }: SearchParams) {
   const userId = user.id as never;
   const currency = user.defaultCurrency as CurrencyCode;
   const params = await searchParams;
-  const year = Number.parseInt(params.year ?? String(dayjs().year()), 10);
+  const year = Number.parseInt(params.year ?? String(nowInTz(user.timezone).year()), 10);
 
   const data = await totalsByMonthForYear(userId, year);
 

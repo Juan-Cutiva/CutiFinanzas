@@ -9,7 +9,7 @@ import { listSavingsGoals } from '@/features/savings/queries';
 import { CloneMonthButton } from '@/features/transactions/components/clone-month-button';
 import { TransactionList } from '@/features/transactions/components/transaction-list';
 import { listTransactionsByMonth } from '@/features/transactions/queries';
-import { dayjs } from '@/lib/format';
+import { dayjs, nowInTz } from '@/lib/format';
 
 export const metadata: Metadata = { title: 'Transacciones' };
 export const dynamic = 'force-dynamic';
@@ -21,7 +21,7 @@ interface PageProps {
 export default async function TransaccionesPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
   const params = await searchParams;
-  const now = dayjs();
+  const now = nowInTz(user.timezone);
   const year = Number.parseInt(params.y ?? String(now.year()), 10);
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
   const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');

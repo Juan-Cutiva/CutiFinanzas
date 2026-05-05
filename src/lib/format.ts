@@ -5,6 +5,8 @@ import isSameOrAfter from 'dayjs/plugin/isSameOrAfter';
 import isSameOrBefore from 'dayjs/plugin/isSameOrBefore';
 import localizedFormat from 'dayjs/plugin/localizedFormat';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import timezone from 'dayjs/plugin/timezone';
+import utc from 'dayjs/plugin/utc';
 import { type CurrencyCode, type Money, moneyCurrency, moneyToMajor } from './money';
 
 dayjs.extend(relativeTime);
@@ -12,7 +14,22 @@ dayjs.extend(localizedFormat);
 dayjs.extend(customParseFormat);
 dayjs.extend(isSameOrAfter);
 dayjs.extend(isSameOrBefore);
+dayjs.extend(utc);
+dayjs.extend(timezone);
 dayjs.locale('es');
+
+/**
+ * "Now" en la timezone del usuario. Usar SIEMPRE en pages server-side
+ * cuando se trate del momento actual: el server corre en UTC y `dayjs()`
+ * por defecto puede mostrar el día/mes anterior cerca de medianoche.
+ */
+export function nowInTz(tz: string): dayjs.Dayjs {
+  try {
+    return dayjs().tz(tz);
+  } catch {
+    return dayjs();
+  }
+}
 
 const MINUS_SIGN = '−';
 

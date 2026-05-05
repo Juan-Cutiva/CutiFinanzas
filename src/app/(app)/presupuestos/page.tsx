@@ -7,7 +7,7 @@ import { CreateBudgetButton } from '@/features/budgets/components/create-budget-
 import { listBudgetsByMonth } from '@/features/budgets/queries';
 import { listCategoriesByUser } from '@/features/categories/queries';
 import { totalsByCategoryByMonth } from '@/features/transactions/queries';
-import { dayjs } from '@/lib/format';
+import { dayjs, nowInTz } from '@/lib/format';
 
 export const metadata: Metadata = { title: 'Presupuestos' };
 export const dynamic = 'force-dynamic';
@@ -20,7 +20,7 @@ export default async function PresupuestosPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
   const userId = user.id as never;
   const params = await searchParams;
-  const now = dayjs();
+  const now = nowInTz(user.timezone);
   const year = Number.parseInt(params.y ?? String(now.year()), 10);
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
   const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');

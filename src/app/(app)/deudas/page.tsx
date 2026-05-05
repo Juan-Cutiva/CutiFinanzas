@@ -5,7 +5,7 @@ import { getOrCreateUser } from '@/db/queries/users';
 import { CreateDebtButton } from '@/features/debts/components/create-debt-button';
 import { DebtList } from '@/features/debts/components/debt-list';
 import { listDebtsWithBalanceAsOf } from '@/features/debts/queries';
-import { dayjs } from '@/lib/format';
+import { dayjs, nowInTz } from '@/lib/format';
 
 export const metadata: Metadata = { title: 'Deudas' };
 export const dynamic = 'force-dynamic';
@@ -17,7 +17,7 @@ interface PageProps {
 export default async function DeudasPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
   const params = await searchParams;
-  const now = dayjs();
+  const now = nowInTz(user.timezone);
   const year = Number.parseInt(params.y ?? String(now.year()), 10);
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
   const lastDay = new Date(year, month, 0).getDate();
