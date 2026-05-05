@@ -12,20 +12,36 @@ export interface MoneyInputProps
   allowDecimals?: boolean;
 }
 
+const separatorsCache = new Map<string, { group: string; decimal: string }>();
+const formatterCache = new Map<string, Intl.NumberFormat>();
+
 function getLocaleSeparators(locale: string): { group: string; decimal: string } {
+  const cached = separatorsCache.get(locale);
+  if (cached) return cached;
   const parts = new Intl.NumberFormat(locale).formatToParts(12345.6);
-  return {
+  const result = {
     group: parts.find((p) => p.type === 'group')?.value ?? ',',
     decimal: parts.find((p) => p.type === 'decimal')?.value ?? '.',
   };
+  separatorsCache.set(locale, result);
+  return result;
+}
+
+function getFormatter(locale: string, allowDecimals: boolean): Intl.NumberFormat {
+  const key = `${locale}:${allowDecimals ? '2' : '0'}`;
+  const cached = formatterCache.get(key);
+  if (cached) return cached;
+  const fmt = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: allowDecimals ? 2 : 0,
+  });
+  formatterCache.set(key, fmt);
+  return fmt;
 }
 
 function format(n: number | undefined, locale: string, allowDecimals: boolean): string {
   if (n === undefined || Number.isNaN(n)) return '';
-  return new Intl.NumberFormat(locale, {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: allowDecimals ? 2 : 0,
-  }).format(n);
+  return getFormatter(locale, allowDecimals).format(n);
 }
 
 function parseRaw(
@@ -92,7 +108,7 @@ function buildDisplay(
 
   if (trailingDecimal && allowDecimals) {
     const intPart = Math.trunc(Math.abs(value));
-    const intStr = new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(intPart);
+    const intStr = getFormatter(locale, false).format(intPart);
     const { decimal } = getLocaleSeparators(locale);
     const trailing = trailingDecimal.slice(1);
     return `${value < 0 ? '-' : ''}${intStr}${decimal}${trailing}`;

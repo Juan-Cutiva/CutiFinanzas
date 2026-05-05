@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import { useAction } from 'next-safe-action/hooks';
 import * as React from 'react';
 import { toast } from 'sonner';
@@ -12,8 +13,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { FileUpload } from '@/components/ui/file-upload';
 import { Input } from '@/components/ui/input';
+
+const FileUpload = dynamic(() => import('@/components/ui/file-upload').then((m) => m.FileUpload), {
+  ssr: false,
+  loading: () => <div className="h-11 animate-pulse rounded-md border border-input bg-muted/30" />,
+});
+
 import { Label } from '@/components/ui/label';
 import { MoneyInput } from '@/components/ui/money-input';
 import {

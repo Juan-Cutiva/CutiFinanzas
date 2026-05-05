@@ -218,7 +218,6 @@ function TxRow({ tx, onView, onEdit, onDelete }: RowProps) {
   const income = isIncomeKind(tx.kind);
   const transfer = tx.kind === 'transfer' || tx.kind === 'credit_card_payment';
   const isVirtual = tx.id.startsWith('virtual:');
-  const isRecurringRow = tx.isRecurring || isVirtual;
   const creditPurchase = isCreditPurchase(tx);
   const amountMajor = Number(tx.amountMinor) / 100;
   const displayAmount = expense ? -amountMajor : amountMajor;
@@ -238,15 +237,13 @@ function TxRow({ tx, onView, onEdit, onDelete }: RowProps) {
         isVirtual && 'opacity-80',
       )}
     >
-      {isRecurringRow ? (
-        <Checkbox
-          checked={tx.isPaid}
-          aria-label={tx.isPaid ? 'Marcar como pendiente' : 'Marcar como confirmado'}
-          disabled={togglePaid.isPending}
-          onCheckedChange={(checked) => togglePaid.execute({ id: tx.id, isPaid: checked === true })}
-          className="shrink-0"
-        />
-      ) : null}
+      <Checkbox
+        checked={tx.isPaid}
+        aria-label={tx.isPaid ? 'Marcar como pendiente' : 'Marcar como confirmado'}
+        disabled={togglePaid.isPending}
+        onCheckedChange={(checked) => togglePaid.execute({ id: tx.id, isPaid: checked === true })}
+        className="shrink-0"
+      />
       <div
         className="grid size-10 shrink-0 place-items-center rounded-full"
         style={{
