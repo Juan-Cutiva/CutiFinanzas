@@ -14,6 +14,7 @@ import type {
   TogglePaidInput,
   TransactionInput,
   UpdateRecurringTransactionInput,
+  UpdateTransactionFullInput,
   UpdateTransactionInput,
 } from './schema';
 
@@ -484,6 +485,172 @@ export async function updateRecurringTransaction(
 }
 
 /**
+ * Edición completa de una transacción puntual (no recurrente).
+ * Permite cambiar: monto, fecha, cuenta origen y destino, kind dentro del
+ * mismo "primary" (income↔income_fixed, expense↔expense_fixed),
+ * categoría, deuda asignada, meta, descripción, notas y comprobante.
+ *
+ * Maneja correctamente las cascadas:
+ * - Revertir/aplicar deltas a deudas y metas si cambian id o monto.
+ * - Crear regla recurrente al pasar de variable a fija.
+ * - Desactivar regla al pasar de fija a variable.
+ * - El cambio entre primary kinds (gasto↔ingreso, etc.) NO se permite
+ *   por el riesgo de inconsistencias; el usuario debe borrar y recrear.
+ */
+function primaryOf(kind: string): string {
+  if (kind === 'income_fixed' || kind === 'income_variable') return 'income';
+  if (kind === 'expense_fixed' || kind === 'expense_variable') return 'expense';
+  return kind;
+}
+
+function isFixedKind(kind: string): boolean {
+  return kind === 'income_fixed' || kind === 'expense_fixed';
+}
+
+export async function updateTransactionFull(userId: UserId, input: UpdateTransactionFullInput) {
+  const existing = await db.query.transactions.findFirst({
+    where: and(eq(transactions.userId, userId), eq(transactions.id, input.id)),
+  });
+  if (!existing) throw new NotFoundError('Transacción');
+
+  if (primaryOf(existing.kind) !== primaryOf(input.kind)) {
+    throw new ValidationError(
+      'No se puede cambiar el tipo principal de un movimiento. Bórralo y crea uno nuevo.',
+    );
+  }
+
+  // Validate the destination account belongs to the user when present.
+  if (input.transferAccountId) {
+    const dest = await db.query.accounts.findFirst({
+      where: and(eq(accounts.userId, userId), eq(accounts.id, input.transferAccountId)),
+    });
+    if (!dest) throw new ValidationError('Cuenta destino inválida');
+  }
+
+  const account = await db.query.accounts.findFirst({
+    where: and(eq(accounts.userId, userId), eq(accounts.id, input.accountId)),
+  });
+  if (!account) throw new ValidationError('Cuenta inválida');
+
+  const currency = existing.currency as CurrencyCode;
+  const newAmount = amountMajorToMinor(input.amount, currency);
+  const oldAmount = BigInt(existing.amountMinor);
+
+  // 1) Revertir impactos viejos en deudas y metas.
+  if (existing.kind === 'debt_payment' && existing.debtId) {
+    await adjustDebtBalance(userId, existing.debtId, oldAmount, -1);
+  }
+  if (existing.kind === 'savings_contribution' && existing.savingsGoalId) {
+    await adjustSavingsGoal(userId, existing.savingsGoalId, -oldAmount);
+  }
+
+  // 2) Manejar regla recurrente.
+  const wasFixed = isFixedKind(existing.kind) && existing.recurringRuleId;
+  const willBeFixed = isFixedKind(input.kind);
+  let recurringRuleId: string | null = existing.recurringRuleId ?? null;
+
+  if (wasFixed && !willBeFixed) {
+    // Pasó de fijo a variable: desactivar la regla.
+    await db
+      .update(recurringRules)
+      .set({ isActive: false, updatedAt: sql`now()` })
+      .where(
+        and(
+          eq(recurringRules.userId, userId),
+          eq(recurringRules.id, existing.recurringRuleId as string),
+        ),
+      );
+    recurringRuleId = null;
+  } else if (!wasFixed && willBeFixed) {
+    // Pasó de variable a fijo: crear regla nueva.
+    const dayOfMonth = Number.parseInt(input.occurredAt.slice(8, 10), 10);
+    const nextMonth = dayjs(input.occurredAt).add(1, 'month');
+    const lastDayNext = nextMonth.endOf('month').date();
+    const safeDayNext = Math.min(dayOfMonth, lastDayNext);
+    const nextOccurrence = nextMonth.date(safeDayNext).format('YYYY-MM-DD');
+    const ruleName =
+      input.description?.trim() || (input.kind === 'income_fixed' ? 'Ingreso fijo' : 'Gasto fijo');
+
+    const [rule] = await db
+      .insert(recurringRules)
+      .values({
+        userId,
+        accountId: input.accountId,
+        transferAccountId: input.transferAccountId ?? null,
+        categoryId: input.categoryId ?? null,
+        debtId: null,
+        savingsGoalId: null,
+        kind: input.kind,
+        name: ruleName,
+        amountMinor: newAmount,
+        currency,
+        frequency: 'monthly',
+        dayOfMonth,
+        startDate: input.occurredAt,
+        nextOccurrenceDate: nextOccurrence,
+        isActive: true,
+        notes: input.notes ?? null,
+      })
+      .returning();
+    recurringRuleId = rule?.id ?? null;
+  } else if (wasFixed && willBeFixed) {
+    // Sigue fijo: actualizar la regla con los nuevos valores.
+    await db
+      .update(recurringRules)
+      .set({
+        accountId: input.accountId,
+        transferAccountId: input.transferAccountId ?? null,
+        categoryId: input.categoryId ?? null,
+        kind: input.kind,
+        amountMinor: newAmount,
+        name: input.description?.trim() || existing.description || 'Movimiento recurrente',
+        notes: input.notes ?? null,
+        updatedAt: sql`now()`,
+      })
+      .where(
+        and(
+          eq(recurringRules.userId, userId),
+          eq(recurringRules.id, existing.recurringRuleId as string),
+        ),
+      );
+  }
+
+  // 3) Actualizar la transacción.
+  const [row] = await db
+    .update(transactions)
+    .set({
+      accountId: input.accountId,
+      transferAccountId: input.transferAccountId ?? null,
+      categoryId: input.categoryId ?? null,
+      debtId: input.kind === 'debt_payment' ? (input.debtId ?? null) : null,
+      savingsGoalId: input.kind === 'savings_contribution' ? (input.savingsGoalId ?? null) : null,
+      kind: input.kind,
+      amountMinor: newAmount,
+      occurredAt: input.occurredAt,
+      description: input.description?.trim() || null,
+      notes: input.notes ?? null,
+      receiptUrl: input.receiptUrl ?? null,
+      isRecurring: !!recurringRuleId,
+      recurringRuleId,
+      quincena: getQuincenaFromIsoDate(input.occurredAt),
+      updatedAt: sql`now()`,
+    })
+    .where(and(eq(transactions.userId, userId), eq(transactions.id, input.id)))
+    .returning();
+  if (!row) throw new NotFoundError('Transacción');
+
+  // 4) Aplicar nuevos impactos en deudas / metas.
+  if (input.kind === 'debt_payment' && input.debtId) {
+    await adjustDebtBalance(userId, input.debtId, -newAmount, 1);
+  }
+  if (input.kind === 'savings_contribution' && input.savingsGoalId) {
+    await adjustSavingsGoal(userId, input.savingsGoalId, newAmount);
+  }
+
+  return row;
+}
+
+/**
  * Marca una transacción recurrente como confirmada/no-confirmada.
  * Si la ocurrencia es virtual, se materializa como fila real con el flag.
  * Es solo un indicador visual: no afecta saldos ni reportes.
@@ -554,4 +721,127 @@ export async function deleteTransaction(userId: UserId, id: string) {
     await adjustSavingsGoal(userId, row.savingsGoalId, -BigInt(row.amountMinor));
   }
   return row;
+}
+
+/**
+ * Borrado con scope para movimientos recurrentes.
+ * - this_month: borra (o no inserta nada si era virtual) sólo esa ocurrencia.
+ * - forward: borra la ocurrencia + las futuras + desactiva la regla.
+ */
+export async function deleteRecurringTransaction(
+  userId: UserId,
+  input: { id: string; mode: 'this_month' | 'forward' },
+) {
+  let ruleId: string;
+  let occurredAt: string;
+  let isVirtual = false;
+
+  if (input.id.startsWith('virtual:')) {
+    isVirtual = true;
+    const parts = input.id.split(':');
+    if (parts.length < 3) throw new ValidationError('Identificador inválido');
+    ruleId = parts[1] as string;
+    occurredAt = parts.slice(2).join(':');
+  } else {
+    const tx = await db.query.transactions.findFirst({
+      where: and(eq(transactions.userId, userId), eq(transactions.id, input.id)),
+    });
+    if (!tx) throw new NotFoundError('Transacción');
+    if (!tx.recurringRuleId) {
+      throw new ValidationError('Esta transacción no es recurrente');
+    }
+    ruleId = tx.recurringRuleId;
+    occurredAt = tx.occurredAt;
+  }
+
+  const rule = await db.query.recurringRules.findFirst({
+    where: and(eq(recurringRules.userId, userId), eq(recurringRules.id, ruleId)),
+  });
+  if (!rule) throw new NotFoundError('Regla recurrente');
+
+  if (input.mode === 'this_month') {
+    if (isVirtual) {
+      // Virtual: no existe físicamente; insertar marcador con monto 0 evita
+      // que la virtualización siga generando este mes.
+      await db.insert(transactions).values({
+        userId,
+        accountId: rule.accountId,
+        transferAccountId: rule.transferAccountId ?? null,
+        categoryId: rule.categoryId,
+        debtId: rule.debtId ?? null,
+        savingsGoalId: rule.savingsGoalId ?? null,
+        kind: rule.kind,
+        amountMinor: 0n,
+        currency: rule.currency,
+        occurredAt,
+        description: `${rule.name} (omitido)`,
+        notes: 'Ocurrencia omitida desde el editor',
+        isPaid: true,
+        isRecurring: true,
+        recurringRuleId: rule.id,
+        quincena: getQuincenaFromIsoDate(occurredAt),
+      });
+      return { ok: true };
+    }
+
+    const [row] = await db
+      .delete(transactions)
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.recurringRuleId, ruleId),
+          eq(transactions.occurredAt, occurredAt),
+        ),
+      )
+      .returning();
+    if (row) {
+      if (row.kind === 'debt_payment' && row.debtId) {
+        await adjustDebtBalance(userId, row.debtId, BigInt(row.amountMinor), -1);
+      }
+      if (row.kind === 'savings_contribution' && row.savingsGoalId) {
+        await adjustSavingsGoal(userId, row.savingsGoalId, -BigInt(row.amountMinor));
+      }
+    }
+    return { ok: true };
+  }
+
+  // forward: borrar la ocurrencia + futuras reales + desactivar regla.
+  const futureRows = await db
+    .select()
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        eq(transactions.recurringRuleId, ruleId),
+        sql`${transactions.occurredAt} >= ${occurredAt}`,
+      ),
+    );
+
+  for (const r of futureRows) {
+    if (r.kind === 'debt_payment' && r.debtId) {
+      await adjustDebtBalance(userId, r.debtId, BigInt(r.amountMinor), -1);
+    }
+    if (r.kind === 'savings_contribution' && r.savingsGoalId) {
+      await adjustSavingsGoal(userId, r.savingsGoalId, -BigInt(r.amountMinor));
+    }
+  }
+
+  await db
+    .delete(transactions)
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        eq(transactions.recurringRuleId, ruleId),
+        sql`${transactions.occurredAt} >= ${occurredAt}`,
+      ),
+    );
+
+  // Cierra la regla un día antes de la ocurrencia que se está borrando.
+  const endDate = dayjs(occurredAt).subtract(1, 'day').format('YYYY-MM-DD');
+  await db
+    .update(recurringRules)
+    .set({ isActive: false, endDate, updatedAt: sql`now()` })
+    .where(and(eq(recurringRules.userId, userId), eq(recurringRules.id, ruleId)));
+
+  return { ok: true };
 }

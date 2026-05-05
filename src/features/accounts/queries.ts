@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, asc, eq, isNull, or, sum } from 'drizzle-orm';
+import { and, asc, eq, isNull, lte, or, sum } from 'drizzle-orm';
 import { cache } from 'react';
 import { db } from '@/db/client';
 import { accounts, transactions } from '@/db/schema';
@@ -63,6 +63,64 @@ export const listAccountsWithBalance = cache(async function listAccountsWithBala
     for (const s of destinationSums) {
       const amount = BigInt(s.total ?? 0);
       balanceMinor += balanceDeltaFor(acc.type as AccountType, s.kind, false, amount);
+    }
+
+    return {
+      ...acc,
+      balanceMinor,
+      classification: classifyAccount(acc.type as AccountType),
+    };
+  });
+});
+
+/**
+ * Saldo de cada cuenta al cierre de la fecha indicada (inclusive).
+ * Útil para el dashboard cuando el usuario navega a un mes pasado o futuro:
+ * el "balance disponible" debe reflejar el estado al final de ese mes.
+ */
+export const listAccountsWithBalanceAsOf = cache(async function listAccountsWithBalanceAsOf(
+  userId: UserId,
+  asOfIso: string,
+) {
+  const list = await listAccountsByUser(userId);
+  if (list.length === 0) return [];
+
+  const sumsAsAccount = await db
+    .select({
+      accountId: transactions.accountId,
+      kind: transactions.kind,
+      total: sum(transactions.amountMinor).mapWith(Number),
+    })
+    .from(transactions)
+    .where(and(eq(transactions.userId, userId), lte(transactions.occurredAt, asOfIso)))
+    .groupBy(transactions.accountId, transactions.kind);
+
+  const sumsAsTransfer = await db
+    .select({
+      accountId: transactions.transferAccountId,
+      kind: transactions.kind,
+      total: sum(transactions.amountMinor).mapWith(Number),
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        lte(transactions.occurredAt, asOfIso),
+        or(eq(transactions.kind, 'transfer'), eq(transactions.kind, 'credit_card_payment')),
+      ),
+    )
+    .groupBy(transactions.transferAccountId, transactions.kind);
+
+  return list.map((acc) => {
+    let balanceMinor = BigInt(acc.initialBalanceMinor);
+    const accountSums = sumsAsAccount.filter((s) => s.accountId === acc.id);
+    const destinationSums = sumsAsTransfer.filter((s) => s.accountId === acc.id);
+
+    for (const s of accountSums) {
+      balanceMinor += balanceDeltaFor(acc.type as AccountType, s.kind, true, BigInt(s.total ?? 0));
+    }
+    for (const s of destinationSums) {
+      balanceMinor += balanceDeltaFor(acc.type as AccountType, s.kind, false, BigInt(s.total ?? 0));
     }
 
     return {

@@ -135,6 +135,68 @@ export const updateTransactionSchema = z.object({
 });
 export type UpdateTransactionInput = z.infer<typeof updateTransactionSchema>;
 
+/** Edit completo (incluye fecha, cuenta, kind, transfer, etc). */
+export const updateTransactionFullSchema = z
+  .object({
+    id: z.string().min(1),
+    accountId: z.string().min(1, 'Cuenta requerida'),
+    transferAccountId: z.string().nullable().optional(),
+    categoryId: z.string().nullable().optional(),
+    debtId: z.string().nullable().optional(),
+    savingsGoalId: z.string().nullable().optional(),
+    kind: z.enum(TX_KINDS),
+    amount: z.coerce.number().positive('El monto debe ser positivo'),
+    occurredAt: isoDate,
+    description: z.string().trim().max(200).optional(),
+    notes: z.string().trim().max(2000).nullable().optional(),
+    receiptUrl: z.string().url().nullable().optional(),
+  })
+  .superRefine((data, ctx) => {
+    if (data.kind === 'transfer' && !data.transferAccountId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Las transferencias requieren cuenta destino',
+        path: ['transferAccountId'],
+      });
+    }
+    if (data.kind === 'credit_card_payment' && !data.transferAccountId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Selecciona la tarjeta a la que estás pagando',
+        path: ['transferAccountId'],
+      });
+    }
+    if ((data.kind === 'expense_fixed' || data.kind === 'expense_variable') && !data.categoryId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Selecciona una categoría',
+        path: ['categoryId'],
+      });
+    }
+    if (data.kind === 'debt_payment' && !data.debtId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Selecciona la deuda',
+        path: ['debtId'],
+      });
+    }
+    if (data.kind === 'savings_contribution' && !data.savingsGoalId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Selecciona la meta de ahorro',
+        path: ['savingsGoalId'],
+      });
+    }
+    if (data.transferAccountId && data.transferAccountId === data.accountId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Origen y destino deben ser distintas',
+        path: ['transferAccountId'],
+      });
+    }
+  });
+export type UpdateTransactionFullInput = z.infer<typeof updateTransactionFullSchema>;
+
 export const updateRecurringTransactionSchema = z.object({
   id: z.string().min(1),
   amount: z.coerce.number().positive('El monto debe ser positivo'),
@@ -153,6 +215,12 @@ export const togglePaidSchema = z.object({
 export type TogglePaidInput = z.infer<typeof togglePaidSchema>;
 
 export const deleteTransactionSchema = z.object({ id: z.string().min(1) });
+
+export const deleteRecurringTransactionSchema = z.object({
+  id: z.string().min(1),
+  mode: z.enum(['this_month', 'forward']),
+});
+export type DeleteRecurringTransactionInput = z.infer<typeof deleteRecurringTransactionSchema>;
 
 export const listTransactionsSchema = z.object({
   year: z.number().int().min(2000).max(2100),

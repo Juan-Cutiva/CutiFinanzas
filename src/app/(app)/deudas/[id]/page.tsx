@@ -8,6 +8,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Progress } from '@/components/ui/progress';
 import { getOrCreateUser } from '@/db/queries/users';
+import { listAccountsByUser } from '@/features/accounts/queries';
 import { listCategoriesByUser } from '@/features/categories/queries';
 import { DebtUsagesList } from '@/features/debts/components/debt-usages-list';
 import { RecordDebtUsageButton } from '@/features/debts/components/record-debt-usage-button';
@@ -16,7 +17,13 @@ import {
   calculateRemainingMonths,
   debtProgress,
 } from '@/features/debts/domain';
-import { getDebtById, getDebtPayments, getDebtUsages } from '@/features/debts/queries';
+import {
+  getDebtById,
+  getDebtPayments,
+  getDebtUsages,
+  listDebtsByUser,
+} from '@/features/debts/queries';
+import { listSavingsGoals } from '@/features/savings/queries';
 import { TransactionList } from '@/features/transactions/components/transaction-list';
 import { formatAmount, formatDate } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
@@ -34,11 +41,23 @@ export default async function DebtDetailPage({ params }: Props) {
   const debt = await getDebtById(user.id as never, id);
   if (!debt) notFound();
 
-  const [payments, usages, categories] = await Promise.all([
-    getDebtPayments(user.id as never, debt.id),
-    getDebtUsages(user.id as never, debt.id),
-    listCategoriesByUser(user.id as never),
+  const userId = user.id as never;
+  const [payments, usages, categories, accountsRaw, debtsRaw, goalsRaw] = await Promise.all([
+    getDebtPayments(userId, debt.id),
+    getDebtUsages(userId, debt.id),
+    listCategoriesByUser(userId),
+    listAccountsByUser(userId),
+    listDebtsByUser(userId),
+    listSavingsGoals(userId),
   ]);
+  const accounts = accountsRaw.map((a) => ({
+    id: a.id,
+    name: a.name,
+    currency: a.currency,
+    type: a.type,
+  }));
+  const debts = debtsRaw.map((d) => ({ id: d.id, name: d.name, currency: d.currency }));
+  const savingsGoals = goalsRaw.map((g) => ({ id: g.id, name: g.name, currency: g.currency }));
 
   const initial = Number(debt.initialAmountMinor) / 100;
   const balance = Number(debt.currentBalanceMinor) / 100;
@@ -147,7 +166,13 @@ export default async function DebtDetailPage({ params }: Props) {
             description="Cuando hagas un pago a esta deuda aparecerá aquí."
           />
         ) : (
-          <TransactionList items={payments as never} categories={categories} />
+          <TransactionList
+            items={payments as never}
+            accounts={accounts}
+            categories={categories}
+            debts={debts}
+            savingsGoals={savingsGoals}
+          />
         )}
       </section>
     </div>

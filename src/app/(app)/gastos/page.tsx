@@ -3,7 +3,10 @@ import type { Metadata } from 'next';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getOrCreateUser } from '@/db/queries/users';
+import { listAccountsByUser } from '@/features/accounts/queries';
 import { listCategoriesByUser } from '@/features/categories/queries';
+import { listDebtsByUser } from '@/features/debts/queries';
+import { listSavingsGoals } from '@/features/savings/queries';
 import { TransactionList } from '@/features/transactions/components/transaction-list';
 import { listExpenseByMonth } from '@/features/transactions/queries';
 import { dayjs, formatAmount } from '@/lib/format';
@@ -26,10 +29,21 @@ export default async function GastosPage({ searchParams }: PageProps) {
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
   const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
 
-  const [items, categories] = await Promise.all([
+  const [items, categories, accountsRaw, debtsRaw, goalsRaw] = await Promise.all([
     listExpenseByMonth(userId, year, month),
     listCategoriesByUser(userId),
+    listAccountsByUser(userId),
+    listDebtsByUser(userId),
+    listSavingsGoals(userId),
   ]);
+  const accounts = accountsRaw.map((a) => ({
+    id: a.id,
+    name: a.name,
+    currency: a.currency,
+    type: a.type,
+  }));
+  const debts = debtsRaw.map((d) => ({ id: d.id, name: d.name, currency: d.currency }));
+  const savingsGoals = goalsRaw.map((g) => ({ id: g.id, name: g.name, currency: g.currency }));
 
   // Las compras con tarjeta de crédito (expense_* en cuenta credit_card/loan)
   // se muestran como referencia pero no entran en el balance: el gasto real
@@ -85,7 +99,13 @@ export default async function GastosPage({ searchParams }: PageProps) {
           description="Toca el botón ＋ para registrar un gasto (fijo o variable)."
         />
       ) : (
-        <TransactionList items={items} categories={categories} />
+        <TransactionList
+          items={items}
+          accounts={accounts}
+          categories={categories}
+          debts={debts}
+          savingsGoals={savingsGoals}
+        />
       )}
     </div>
   );

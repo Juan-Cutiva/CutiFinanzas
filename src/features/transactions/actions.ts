@@ -4,16 +4,20 @@ import { revalidateAfterTransaction } from '@/lib/cache-tags';
 import { authedAction } from '@/lib/safe-action';
 import {
   createTransaction,
+  deleteRecurringTransaction,
   deleteTransaction,
   togglePaid,
   updateRecurringTransaction,
   updateTransaction,
+  updateTransactionFull,
 } from './mutations';
 import {
+  deleteRecurringTransactionSchema,
   deleteTransactionSchema,
   togglePaidSchema,
   transactionInputSchema,
   updateRecurringTransactionSchema,
+  updateTransactionFullSchema,
   updateTransactionSchema,
 } from './schema';
 
@@ -49,6 +53,24 @@ export const togglePaidAction = authedAction
   .inputSchema(togglePaidSchema)
   .action(async ({ parsedInput, ctx }) => {
     const row = await togglePaid(ctx.userId, parsedInput);
+    revalidateAfterTransaction(ctx.userId);
+    return row;
+  });
+
+export const updateTransactionFullAction = authedAction
+  .metadata({ actionName: 'updateTransactionFull' })
+  .inputSchema(updateTransactionFullSchema)
+  .action(async ({ parsedInput, ctx }) => {
+    const row = await updateTransactionFull(ctx.userId, parsedInput);
+    revalidateAfterTransaction(ctx.userId);
+    return row;
+  });
+
+export const deleteRecurringTransactionAction = authedAction
+  .metadata({ actionName: 'deleteRecurringTransaction' })
+  .inputSchema(deleteRecurringTransactionSchema)
+  .action(async ({ parsedInput, ctx }) => {
+    const row = await deleteRecurringTransaction(ctx.userId, parsedInput);
     revalidateAfterTransaction(ctx.userId);
     return row;
   });

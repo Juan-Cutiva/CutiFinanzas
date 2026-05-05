@@ -2,7 +2,10 @@ import { ListOrdered } from 'lucide-react';
 import type { Metadata } from 'next';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getOrCreateUser } from '@/db/queries/users';
+import { listAccountsByUser } from '@/features/accounts/queries';
 import { listCategoriesByUser } from '@/features/categories/queries';
+import { listDebtsByUser } from '@/features/debts/queries';
+import { listSavingsGoals } from '@/features/savings/queries';
 import { CloneMonthButton } from '@/features/transactions/components/clone-month-button';
 import { TransactionList } from '@/features/transactions/components/transaction-list';
 import { listTransactionsByMonth } from '@/features/transactions/queries';
@@ -23,10 +26,22 @@ export default async function TransaccionesPage({ searchParams }: PageProps) {
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
   const monthLabel = dayjs(`${year}-${String(month).padStart(2, '0')}-01`).format('MMMM YYYY');
 
-  const [items, categories] = await Promise.all([
-    listTransactionsByMonth(user.id as never, year, month),
-    listCategoriesByUser(user.id as never),
+  const userId = user.id as never;
+  const [items, categories, accountsRaw, debtsRaw, goalsRaw] = await Promise.all([
+    listTransactionsByMonth(userId, year, month),
+    listCategoriesByUser(userId),
+    listAccountsByUser(userId),
+    listDebtsByUser(userId),
+    listSavingsGoals(userId),
   ]);
+  const accounts = accountsRaw.map((a) => ({
+    id: a.id,
+    name: a.name,
+    currency: a.currency,
+    type: a.type,
+  }));
+  const debts = debtsRaw.map((d) => ({ id: d.id, name: d.name, currency: d.currency }));
+  const savingsGoals = goalsRaw.map((g) => ({ id: g.id, name: g.name, currency: g.currency }));
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
@@ -47,7 +62,13 @@ export default async function TransaccionesPage({ searchParams }: PageProps) {
           description="Toca el botón ＋ abajo a la derecha para registrar tu primer ingreso o gasto."
         />
       ) : (
-        <TransactionList items={items} categories={categories} />
+        <TransactionList
+          items={items}
+          accounts={accounts}
+          categories={categories}
+          debts={debts}
+          savingsGoals={savingsGoals}
+        />
       )}
     </div>
   );

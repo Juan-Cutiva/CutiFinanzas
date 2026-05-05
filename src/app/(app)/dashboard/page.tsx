@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { getOrCreateUser } from '@/db/queries/users';
-import { listAccountsWithBalance } from '@/features/accounts/queries';
+import { listAccountsWithBalanceAsOf } from '@/features/accounts/queries';
 import {
   annualToMonthlyRate,
   calculateRemainingMonths,
@@ -47,8 +47,12 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
   const periods = periodsForMonth(year, month, user.payFrequency as PayFrequency);
 
+  // El balance se calcula al cierre del último día del mes seleccionado.
+  const lastDayOfMonth = new Date(year, month, 0).getDate();
+  const endOfMonthIso = `${year}-${String(month).padStart(2, '0')}-${String(lastDayOfMonth).padStart(2, '0')}`;
+
   const [accounts, totals, goals, debts, periodTotals] = await Promise.all([
-    listAccountsWithBalance(userId),
+    listAccountsWithBalanceAsOf(userId, endOfMonthIso),
     totalsByMonth(userId, year, month),
     listSavingsGoals(userId),
     listDebtsByUser(userId),
