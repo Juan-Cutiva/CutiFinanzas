@@ -25,9 +25,10 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { KIND_LABELS, type TransactionKind } from '@/lib/accounting/shared';
-import { updateRecurringAction, updateTransactionAction } from '../actions';
+import { editVirtualAction, updateRecurringAction, updateTransactionAction } from '../actions';
 
 export interface EditableTx {
+  /** Para virtuales: `virtual:<ruleId>:<YYYY-MM-DD>`. Para reales: id de transacción. */
   id: string;
   kind: TransactionKind;
   amountMinor: bigint;
@@ -37,6 +38,8 @@ export interface EditableTx {
   notes: string | null;
   categoryId: string | null;
   recurringRuleId: string | null;
+  /** True si la transacción aún no está materializada (es proyectada). */
+  isVirtual?: boolean;
 }
 
 export interface CategoryOption {
@@ -67,7 +70,8 @@ export function EditTransactionDialog({ tx, categories, onClose }: Props) {
     setDescription(tx.description ?? '');
     setNotes(tx.notes ?? '');
     setCategoryId(tx.categoryId);
-    setMode(tx.recurringRuleId ? 'forward' : 'this_one');
+    // Virtual o recurrente: default this_one (cambio solo este mes); puntual: this_one.
+    setMode('this_one');
   }, [tx]);
 
   const updateOnce = useAction(updateTransactionAction, {
@@ -88,7 +92,20 @@ export function EditTransactionDialog({ tx, categories, onClose }: Props) {
     onError: ({ error }) => toast.error(error.serverError ?? 'No se pudo actualizar'),
   });
 
-  const isPending = updateOnce.isPending || updateRec.isPending;
+  const editVirt = useAction(editVirtualAction, {
+    onSuccess: () => {
+      toast.success(
+        mode === 'forward'
+          ? 'Recurrente actualizada de aquí en adelante'
+          : 'Solo esta ocurrencia actualizada',
+      );
+      onClose();
+    },
+    onError: ({ error }) => toast.error(error.serverError ?? 'No se pudo actualizar'),
+  });
+
+  const isPending = updateOnce.isPending || updateRec.isPending || editVirt.isPending;
+  const isVirtual = tx?.isVirtual === true;
   const isRecurring = !!tx?.recurringRuleId;
   // Categoría aplica a expense, cc_charge, cc_payment, income, refund, loan_payment
   // (todos excepto transfer y savings_contribution).
@@ -96,7 +113,22 @@ export function EditTransactionDialog({ tx, categories, onClose }: Props) {
 
   function submit() {
     if (!tx) return;
-    if (isRecurring) {
+    if (isVirtual) {
+      // Parsear `virtual:<ruleId>:<YYYY-MM-DD>` para llamar editVirtualAction.
+      const parts = tx.id.split(':');
+      const ruleId = parts[1];
+      const occurrenceDate = parts[2];
+      if (!ruleId || !occurrenceDate) return;
+      editVirt.execute({
+        ruleId,
+        occurrenceDate,
+        amount,
+        description: description.trim() || null,
+        notes: notes.trim() || null,
+        categoryId,
+        mode,
+      });
+    } else if (isRecurring) {
       updateRec.execute({
         transactionId: tx.id,
         amount,
@@ -137,7 +169,7 @@ export function EditTransactionDialog({ tx, categories, onClose }: Props) {
               />
             </div>
 
-            {!isRecurring ? (
+            {!isRecurring && !isVirtual ? (
               <div className="grid gap-2">
                 <Label htmlFor="edit-date">Fecha</Label>
                 <DatePicker value={transactionDate} onChange={setTransactionDate} />
@@ -185,7 +217,7 @@ export function EditTransactionDialog({ tx, categories, onClose }: Props) {
               />
             </div>
 
-            {isRecurring ? (
+            {isRecurring || isVirtual ? (
               <fieldset className="rounded-md border border-border/60 bg-muted/30 p-3">
                 <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                   Alcance del cambio
@@ -203,7 +235,9 @@ export function EditTransactionDialog({ tx, categories, onClose }: Props) {
                     <span>
                       <span className="font-medium">Solo este mes</span>
                       <span className="block text-xs text-muted-foreground">
-                        Aplica solo a esta ocurrencia. Las demás conservan su valor.
+                        {isVirtual
+                          ? 'Aplica el cambio solo a esta ocurrencia futura. Los demás meses conservan los valores de la regla.'
+                          : 'Aplica solo a esta ocurrencia. Las demás conservan su valor.'}
                       </span>
                     </span>
                   </label>

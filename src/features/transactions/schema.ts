@@ -161,3 +161,40 @@ export const deleteRecurringSchema = z.object({
   mode: z.enum(['this_one', 'forward']),
 });
 export type DeleteRecurringInput = z.infer<typeof deleteRecurringSchema>;
+
+/**
+ * Edita una OCURRENCIA VIRTUAL (proyectada) de una regla recurrente.
+ * El movimiento aún no existe en `transactions` — se materializa al guardar.
+ *
+ * mode='this_one': inserta/actualiza la fila para esa fecha con los nuevos valores
+ *                  (override puntual). El cron no la duplicará por el unique index.
+ * mode='forward':  cierra la regla en cutoff = occurrenceDate y crea una nueva regla
+ *                  con los nuevos valores desde occurrenceDate. Pasado intacto.
+ */
+export const editVirtualSchema = z.object({
+  ruleId: z.string().min(1),
+  occurrenceDate: isoDate,
+  amount: z.coerce.number().positive().optional(),
+  description: z.string().trim().max(200).nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+  categoryId: z.string().nullable().optional(),
+  accountId: z.string().min(1).optional(),
+  counterAccountId: z.string().nullable().optional(),
+  mode: z.enum(['this_one', 'forward']),
+});
+export type EditVirtualInput = z.infer<typeof editVirtualSchema>;
+
+/**
+ * Borra una OCURRENCIA VIRTUAL.
+ *
+ * mode='this_one': "omite" la ocurrencia (inserta fila con amount=0 y descripción
+ *                  "Omitido"). El cron no la creará por el unique index. Visible
+ *                  como referencia de que ese mes está saltado intencionalmente.
+ * mode='forward':  cierra la regla en cutoff y borra cualquier futura materializada.
+ */
+export const deleteVirtualSchema = z.object({
+  ruleId: z.string().min(1),
+  occurrenceDate: isoDate,
+  mode: z.enum(['this_one', 'forward']),
+});
+export type DeleteVirtualInput = z.infer<typeof deleteVirtualSchema>;

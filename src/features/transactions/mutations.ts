@@ -11,6 +11,8 @@ import { amountMajorToMinor, nextOccurrenceFor } from './domain';
 import type {
   CreateTransactionInput,
   DeleteRecurringInput,
+  DeleteVirtualInput,
+  EditVirtualInput,
   TogglePaidInput,
   UpdateRecurringInput,
   UpdateTransactionInput,
@@ -290,6 +292,224 @@ export async function deleteRecurring(userId: UserId, input: DeleteRecurringInpu
         gte(transactions.transactionDate, cutoff),
       ),
     );
+  return { ok: true } as const;
+}
+
+/**
+ * Edita una ocurrencia VIRTUAL (futura, aún no materializada).
+ *
+ * mode='this_one': override puntual. Materializa la fila en la fecha con los
+ *   valores nuevos (insert; si ya existe por algún motivo, se actualiza).
+ *   El cron no la duplica por el unique index (rule_id, transaction_date).
+ *   Las demás ocurrencias futuras siguen igual.
+ *
+ * mode='forward': cierra la regla actual con endDate = occurrenceDate − 1 día,
+ *   crea una nueva regla con startDate = occurrenceDate y los valores nuevos
+ *   (igual que updateRecurring forward). Las ocurrencias materializadas con
+ *   fecha ≥ cutoff se borran (las futuras se generarán con la nueva regla).
+ *   El pasado intacto.
+ */
+export async function editVirtualOccurrence(userId: UserId, input: EditVirtualInput) {
+  const rule = await db.query.recurringRules.findFirst({
+    where: and(eq(recurringRules.id, input.ruleId), eq(recurringRules.userId, userId)),
+  });
+  if (!rule) throw new NotFoundError('Regla recurrente');
+
+  const currency = rule.currency as CurrencyCode;
+  const newAmountMinor =
+    input.amount !== undefined
+      ? amountMajorToMinor(input.amount, currency)
+      : (rule.amountMinor as bigint);
+
+  if (input.mode === 'forward') {
+    const cutoff = input.occurrenceDate;
+    const dayBefore = dayjs(cutoff).subtract(1, 'day').format('YYYY-MM-DD');
+
+    // Borra ocurrencias materializadas de la regla vieja con fecha ≥ cutoff.
+    await db
+      .delete(transactions)
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.recurringRuleId, rule.id),
+          gte(transactions.transactionDate, cutoff),
+        ),
+      );
+
+    const next = nextOccurrenceFor(
+      cutoff,
+      rule.frequency as 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly',
+    );
+    const [newRule] = await db
+      .insert(recurringRules)
+      .values({
+        userId,
+        accountId: input.accountId ?? rule.accountId,
+        counterAccountId:
+          input.counterAccountId !== undefined ? input.counterAccountId : rule.counterAccountId,
+        categoryId: input.categoryId !== undefined ? input.categoryId : rule.categoryId,
+        debtId: rule.debtId,
+        savingsGoalId: rule.savingsGoalId,
+        kind: rule.kind,
+        name: rule.name,
+        amountMinor: newAmountMinor,
+        currency: rule.currency,
+        frequency: rule.frequency,
+        dayOfMonth: rule.dayOfMonth,
+        dayOfWeek: rule.dayOfWeek,
+        startDate: cutoff,
+        endDate: rule.endDate,
+        nextOccurrenceDate: next,
+        isActive: true,
+        supersedesId: rule.id,
+      })
+      .returning();
+    if (!newRule) throw new Error('No se pudo crear la nueva versión');
+
+    await db
+      .update(recurringRules)
+      .set({ endDate: dayBefore, isActive: false, updatedAt: sql`now()` })
+      .where(eq(recurringRules.id, rule.id));
+
+    // Materializa primera ocurrencia con la nueva regla.
+    const [row] = await db
+      .insert(transactions)
+      .values({
+        userId,
+        accountId: newRule.accountId,
+        counterAccountId: newRule.counterAccountId,
+        categoryId: newRule.categoryId,
+        debtId: newRule.debtId,
+        savingsGoalId: newRule.savingsGoalId,
+        kind: newRule.kind,
+        amountMinor: newRule.amountMinor,
+        currency: newRule.currency,
+        transactionDate: cutoff,
+        description: input.description ?? rule.name,
+        notes: input.notes ?? null,
+        recurringRuleId: newRule.id,
+        isPaid: true,
+      })
+      .onConflictDoNothing()
+      .returning();
+    return row ?? null;
+  }
+
+  // mode === 'this_one': override puntual de UNA ocurrencia
+  const existing = await db.query.transactions.findFirst({
+    where: and(
+      eq(transactions.recurringRuleId, rule.id),
+      eq(transactions.transactionDate, input.occurrenceDate),
+    ),
+  });
+
+  if (existing) {
+    const patch: Record<string, unknown> = { updatedAt: sql`now()` };
+    if (input.amount !== undefined) patch.amountMinor = newAmountMinor;
+    if (input.description !== undefined) patch.description = input.description;
+    if (input.notes !== undefined) patch.notes = input.notes;
+    if (input.categoryId !== undefined) patch.categoryId = input.categoryId;
+    if (input.accountId !== undefined) patch.accountId = input.accountId;
+    if (input.counterAccountId !== undefined) patch.counterAccountId = input.counterAccountId;
+    const [row] = await db
+      .update(transactions)
+      .set(patch)
+      .where(eq(transactions.id, existing.id))
+      .returning();
+    return row;
+  }
+
+  // No existe — materializar la fila con los valores override.
+  const [row] = await db
+    .insert(transactions)
+    .values({
+      userId,
+      accountId: input.accountId ?? rule.accountId,
+      counterAccountId:
+        input.counterAccountId !== undefined ? input.counterAccountId : rule.counterAccountId,
+      categoryId: input.categoryId !== undefined ? input.categoryId : rule.categoryId,
+      debtId: rule.debtId,
+      savingsGoalId: rule.savingsGoalId,
+      kind: rule.kind,
+      amountMinor: newAmountMinor,
+      currency: rule.currency,
+      transactionDate: input.occurrenceDate,
+      description: input.description ?? rule.name,
+      notes: input.notes ?? null,
+      recurringRuleId: rule.id,
+      isPaid: true,
+    })
+    .onConflictDoNothing()
+    .returning();
+  return row ?? null;
+}
+
+/**
+ * Borra una ocurrencia VIRTUAL.
+ *
+ * mode='this_one': "omite" inserta una fila con amount=0n y descripción "(omitido)".
+ *   El cron no recreará por el unique index. Aparece en el listado como
+ *   referencia de que ese mes se saltó.
+ * mode='forward': cierra la regla en cutoff − 1 y borra futuras materializadas.
+ */
+export async function deleteVirtualOccurrence(userId: UserId, input: DeleteVirtualInput) {
+  const rule = await db.query.recurringRules.findFirst({
+    where: and(eq(recurringRules.id, input.ruleId), eq(recurringRules.userId, userId)),
+  });
+  if (!rule) throw new NotFoundError('Regla recurrente');
+
+  if (input.mode === 'forward') {
+    const cutoff = input.occurrenceDate;
+    const dayBefore = dayjs(cutoff).subtract(1, 'day').format('YYYY-MM-DD');
+    await db
+      .update(recurringRules)
+      .set({ endDate: dayBefore, isActive: false, updatedAt: sql`now()` })
+      .where(eq(recurringRules.id, rule.id));
+    await db
+      .delete(transactions)
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.recurringRuleId, rule.id),
+          gte(transactions.transactionDate, cutoff),
+        ),
+      );
+    return { ok: true } as const;
+  }
+
+  // this_one: omitir esa ocurrencia con amount=0
+  const existing = await db.query.transactions.findFirst({
+    where: and(
+      eq(transactions.recurringRuleId, rule.id),
+      eq(transactions.transactionDate, input.occurrenceDate),
+    ),
+  });
+
+  if (existing) {
+    await db
+      .update(transactions)
+      .set({ amountMinor: 0n, description: '(Omitido)', updatedAt: sql`now()` })
+      .where(eq(transactions.id, existing.id));
+  } else {
+    await db
+      .insert(transactions)
+      .values({
+        userId,
+        accountId: rule.accountId,
+        counterAccountId: rule.counterAccountId,
+        categoryId: rule.categoryId,
+        debtId: rule.debtId,
+        savingsGoalId: rule.savingsGoalId,
+        kind: rule.kind,
+        amountMinor: 0n,
+        currency: rule.currency,
+        transactionDate: input.occurrenceDate,
+        description: '(Omitido)',
+        recurringRuleId: rule.id,
+        isPaid: true,
+      })
+      .onConflictDoNothing();
+  }
   return { ok: true } as const;
 }
 

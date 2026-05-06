@@ -34,7 +34,12 @@ import {
 import { dayjs, formatAmount, formatDate } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import { cn } from '@/lib/utils';
-import { deleteRecurringAction, deleteTransactionAction, togglePaidAction } from '../actions';
+import {
+  deleteRecurringAction,
+  deleteTransactionAction,
+  deleteVirtualAction,
+  togglePaidAction,
+} from '../actions';
 import {
   type CategoryOption,
   type EditableTx,
@@ -129,7 +134,19 @@ export function TransactionList({ items, categories = [], viewAccountId }: Props
     },
     onError: ({ error }) => toast.error(error.serverError ?? 'No se pudo eliminar'),
   });
-  const isDeleting = deleteOnce.isPending || deleteRec.isPending;
+
+  const deleteVirt = useAction(deleteVirtualAction, {
+    onSuccess: () => {
+      toast.success(
+        deleteScope === 'forward'
+          ? 'Recurrente cancelada de este mes en adelante'
+          : 'Ocurrencia omitida',
+      );
+      setPendingDelete(null);
+    },
+    onError: ({ error }) => toast.error(error.serverError ?? 'No se pudo eliminar'),
+  });
+  const isDeleting = deleteOnce.isPending || deleteRec.isPending || deleteVirt.isPending;
 
   const { grouped, days } = useMemo(() => {
     const g = groupByDay(items);
@@ -141,7 +158,14 @@ export function TransactionList({ items, categories = [], viewAccountId }: Props
 
   function executeDelete() {
     if (!pendingDelete) return;
-    if (pendingDelete.recurringRuleId) {
+    if (pendingDelete.isVirtual) {
+      // Virtual: parsear `virtual:<ruleId>:<YYYY-MM-DD>` y llamar action específica.
+      const parts = pendingDelete.id.split(':');
+      const ruleId = parts[1];
+      const occurrenceDate = parts[2];
+      if (!ruleId || !occurrenceDate) return;
+      deleteVirt.execute({ ruleId, occurrenceDate, mode: deleteScope });
+    } else if (pendingDelete.recurringRuleId) {
       deleteRec.execute({ transactionId: pendingDelete.id, mode: deleteScope });
     } else {
       deleteOnce.execute({ id: pendingDelete.id });
@@ -231,10 +255,11 @@ export function TransactionList({ items, categories = [], viewAccountId }: Props
                           notes: tx.notes,
                           categoryId: tx.categoryId,
                           recurringRuleId: tx.recurringRuleId,
+                          isVirtual: tx.isVirtual === true,
                         })
                       }
                       onDelete={() => {
-                        setDeleteScope('this_one');
+                        setDeleteScope(tx.isVirtual ? 'forward' : 'this_one');
                         setPendingDelete(tx);
                       }}
                     />
@@ -254,7 +279,7 @@ export function TransactionList({ items, categories = [], viewAccountId }: Props
               Esta acción no se puede deshacer. Los saldos se recalculan al instante.
             </DialogDescription>
           </DialogHeader>
-          {pendingDelete?.recurringRuleId ? (
+          {pendingDelete?.recurringRuleId || pendingDelete?.isVirtual ? (
             <fieldset className="rounded-md border border-border/60 bg-muted/30 p-3">
               <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Alcance
@@ -272,7 +297,9 @@ export function TransactionList({ items, categories = [], viewAccountId }: Props
                   <span>
                     <span className="font-medium">Solo esta ocurrencia</span>
                     <span className="block text-xs text-muted-foreground">
-                      Borra solo este movimiento. La regla recurrente sigue activa.
+                      {pendingDelete?.isVirtual
+                        ? 'Omite esta fecha (queda como "Omitido"). La regla sigue activa para los demás meses.'
+                        : 'Borra solo este movimiento. La regla recurrente sigue activa.'}
                     </span>
                   </span>
                 </label>
@@ -435,37 +462,33 @@ function TxRow({ tx, onView, onEdit, onDelete }: RowProps) {
                 signDisplay: income || expense ? 'always' : 'auto',
               })}
         </span>
-        {!isVirtual ? (
-          <>
-            <Button
-              size="icon"
-              variant="ghost"
-              aria-label="Ver detalles"
-              className="size-9 transition-opacity md:size-8 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-              onClick={onView}
-            >
-              <Eye className="size-4 text-muted-foreground" />
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              aria-label="Editar movimiento"
-              className="size-9 transition-opacity md:size-8 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-              onClick={onEdit}
-            >
-              <Pencil className="size-4 text-muted-foreground" />
-            </Button>
-            <Button
-              size="icon"
-              variant="ghost"
-              aria-label="Eliminar movimiento"
-              className="size-9 transition-opacity md:size-8 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-              onClick={onDelete}
-            >
-              <Trash2 className="size-4 text-muted-foreground" />
-            </Button>
-          </>
-        ) : null}
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label="Ver detalles"
+          className="size-9 transition-opacity md:size-8 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+          onClick={onView}
+        >
+          <Eye className="size-4 text-muted-foreground" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label="Editar movimiento"
+          className="size-9 transition-opacity md:size-8 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+          onClick={onEdit}
+        >
+          <Pencil className="size-4 text-muted-foreground" />
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          aria-label="Eliminar movimiento"
+          className="size-9 transition-opacity md:size-8 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+          onClick={onDelete}
+        >
+          <Trash2 className="size-4 text-muted-foreground" />
+        </Button>
       </div>
     </li>
   );

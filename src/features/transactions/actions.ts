@@ -6,6 +6,8 @@ import {
   createTransaction,
   deleteRecurring,
   deleteTransaction,
+  deleteVirtualOccurrence,
+  editVirtualOccurrence,
   togglePaid,
   updateRecurring,
   updateTransaction,
@@ -14,6 +16,8 @@ import {
   createTransactionSchema,
   deleteRecurringSchema,
   deleteTransactionSchema,
+  deleteVirtualSchema,
+  editVirtualSchema,
   togglePaidSchema,
   updateRecurringSchema,
   updateTransactionSchema,
@@ -69,6 +73,24 @@ export const deleteRecurringAction = authedAction
   .inputSchema(deleteRecurringSchema)
   .action(async ({ parsedInput, ctx }) => {
     await deleteRecurring(ctx.userId, parsedInput);
+    revalidateAfterTransaction(ctx.userId);
+    return { ok: true };
+  });
+
+export const editVirtualAction = authedAction
+  .metadata({ actionName: 'editVirtual' })
+  .inputSchema(editVirtualSchema)
+  .action(async ({ parsedInput, ctx }) => {
+    const row = await editVirtualOccurrence(ctx.userId, parsedInput);
+    revalidateAfterTransaction(ctx.userId);
+    return row;
+  });
+
+export const deleteVirtualAction = authedAction
+  .metadata({ actionName: 'deleteVirtual' })
+  .inputSchema(deleteVirtualSchema)
+  .action(async ({ parsedInput, ctx }) => {
+    await deleteVirtualOccurrence(ctx.userId, parsedInput);
     revalidateAfterTransaction(ctx.userId);
     return { ok: true };
   });
