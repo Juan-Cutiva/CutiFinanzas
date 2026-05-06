@@ -42,15 +42,18 @@ export const ALL_KINDS: TransactionKind[] = [
  * - expense: gasto directo desde cuenta asset.
  * - cc_payment: pago al banco por la tarjeta de crédito.
  * - loan_payment: cuota de préstamo installment.
+ * - savings_contribution: aporte a ahorro (decisión de producto: el dinero
+ *   destinado a ahorros se trata como "gastado" desde la perspectiva del
+ *   gasto operativo del mes — ya no está disponible para gastar libremente).
  *
  * NO incluye cc_charge (eso solo afecta el saldo de la CC).
- * NO incluye savings_contribution (eso es asignación, no gasto).
- * NO incluye transfer (es interno).
+ * NO incluye transfer (es movimiento interno entre cuentas asset propias).
  */
 export const EXPENSE_KINDS: ReadonlyArray<TransactionKind> = [
   'expense',
   'cc_payment',
   'loan_payment',
+  'savings_contribution',
 ];
 
 /**
@@ -59,13 +62,10 @@ export const EXPENSE_KINDS: ReadonlyArray<TransactionKind> = [
 export const INCOME_KINDS: ReadonlyArray<TransactionKind> = ['income', 'refund'];
 
 /**
- * Movimientos internos entre cuentas propias del usuario — neutros al patrimonio.
+ * Movimientos verdaderamente internos entre cuentas propias del usuario —
+ * neutros al patrimonio Y al gasto operativo.
  */
-export const INTERNAL_KINDS: ReadonlyArray<TransactionKind> = [
-  'transfer',
-  'cc_charge',
-  'savings_contribution',
-];
+export const INTERNAL_KINDS: ReadonlyArray<TransactionKind> = ['transfer', 'cc_charge'];
 
 export function isExpenseOfMonth(kind: TransactionKind): boolean {
   return (EXPENSE_KINDS as readonly TransactionKind[]).includes(kind);

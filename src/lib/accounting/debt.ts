@@ -95,10 +95,31 @@ export async function getDebtState(
           eq(recurringRules.kind, 'loan_payment'),
         ),
       );
+    // Set de (ruleId, date) ya materializadas — para no contar 2 veces si
+    // una virtual ya fue materializada (edit puntual o cron).
+    const matRows = await db
+      .select({ ruleId: transactions.recurringRuleId, date: transactions.transactionDate })
+      .from(transactions)
+      .where(
+        and(
+          eq(transactions.userId, userId),
+          eq(transactions.debtId, debtId),
+          eq(transactions.kind, 'loan_payment'),
+          lte(transactions.transactionDate, asOfDate),
+        ),
+      );
+    const matSet = new Set<string>();
+    for (const m of matRows) {
+      if (m.ruleId) matSet.add(`${m.ruleId}:${m.date}`);
+    }
+
     let projectedPayments = 0n;
     for (const r of rules) {
       const v = generateVirtualOccurrences(toVirtualRule(r), asOfDate);
-      for (const occ of v) projectedPayments += occ.amountMinor;
+      for (const occ of v) {
+        if (matSet.has(`${r.id}:${occ.transactionDate}`)) continue;
+        projectedPayments += occ.amountMinor;
+      }
     }
     projectedBalanceMinor = principal - initialPaid - totalPaidUpToAsOf - projectedPayments;
     if (projectedBalanceMinor < 0n) projectedBalanceMinor = 0n;

@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, eq, lte, sql } from 'drizzle-orm';
+import { and, eq, gt, isNotNull, lte, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { accounts, recurringRules, transactions } from '@/db/schema';
 import type { UserId } from '@/types/ids';
@@ -113,11 +113,30 @@ export async function getProjectedBalanceMinor(
     .from(recurringRules)
     .where(and(eq(recurringRules.userId, userId), eq(recurringRules.isActive, true)));
 
+  // Set de (ruleId, date) ya materializadas en (today, asOfDate] — para evitar
+  // contar doble cuando una virtual ya fue materializada (por edit puntual o cron).
+  const matRows = await db
+    .select({ ruleId: transactions.recurringRuleId, date: transactions.transactionDate })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        gt(transactions.transactionDate, today),
+        lte(transactions.transactionDate, asOfDate),
+        isNotNull(transactions.recurringRuleId),
+      ),
+    );
+  const matSet = new Set<string>();
+  for (const r of matRows) {
+    if (r.ruleId) matSet.add(`${r.ruleId}:${r.date}`);
+  }
+
   let delta = 0n;
   for (const r of rules) {
     const rule = ruleToVirtuals(r);
     const virtuals = generateVirtualOccurrences(rule, asOfDate);
     for (const v of virtuals) {
+      if (matSet.has(`${r.id}:${v.transactionDate}`)) continue;
       delta += deltaForAccount(v, accountId);
     }
   }

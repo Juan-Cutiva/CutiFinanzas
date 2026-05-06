@@ -9,12 +9,18 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { getOrCreateUser } from '@/db/queries/users';
 import { getAccountById } from '@/features/accounts/queries';
 import { ACCOUNT_TYPE_LABELS, type AccountTypeCode } from '@/features/accounts/schema';
+import { listCategoriesByUser } from '@/features/categories/queries';
 import {
   TransactionList,
   type TxListItem,
 } from '@/features/transactions/components/transaction-list';
 import { listTransactionsByAccount } from '@/features/transactions/queries';
-import { getCreditCardState, getProjectedBalanceMinor, monthRange } from '@/lib/accounting';
+import {
+  getCreditCardState,
+  getProjectedBalanceMinor,
+  listVirtualsForMonth,
+  monthRange,
+} from '@/lib/accounting';
 import type { TransactionKind } from '@/lib/accounting/shared';
 import { formatAmount, nowInTz } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
@@ -44,17 +50,24 @@ export default async function AccountDetailPage({ params, searchParams }: Props)
 
   const isCC = account.type === 'credit_card';
 
-  const [txs, balance, ccState] = await Promise.all([
+  const [txs, balance, ccState, allVirtuals, categories] = await Promise.all([
     listTransactionsByAccount(userId, account.id, from, to),
     getProjectedBalanceMinor(userId, account.id, to, today),
     isCC ? getCreditCardState(userId, account.id, today) : Promise.resolve(null),
+    listVirtualsForMonth(userId, year, month),
+    listCategoriesByUser(userId),
   ]);
 
   const realMajor = Number(balance.realMinor) / 100;
   const projectedMajor = Number(balance.projectedMinor) / 100;
   const showProjection = balance.realMinor !== balance.projectedMinor;
 
-  const itemsForList: TxListItem[] = txs.map((t) => ({
+  // Filtrar virtuales que afectan a esta cuenta (origen o destino).
+  const virtuals = allVirtuals.filter(
+    (v) => v.accountId === account.id || v.counterAccountId === account.id,
+  );
+
+  const realItems: TxListItem[] = txs.map((t) => ({
     id: t.id,
     kind: t.kind as TransactionKind,
     amountMinor: t.amountMinor as bigint,
@@ -77,6 +90,10 @@ export default async function AccountDetailPage({ params, searchParams }: Props)
       : null,
     debt: t.debt ? { name: t.debt.name } : null,
   }));
+
+  const itemsForList: TxListItem[] = [...realItems, ...virtuals].sort((a, b) =>
+    a.transactionDate < b.transactionDate ? 1 : -1,
+  );
 
   return (
     <div className="mx-auto w-full max-w-4xl space-y-6">
@@ -176,7 +193,11 @@ export default async function AccountDetailPage({ params, searchParams }: Props)
             description="Esta cuenta aún no tiene transacciones en el período."
           />
         ) : (
-          <TransactionList items={itemsForList} viewAccountId={account.id} />
+          <TransactionList
+            items={itemsForList}
+            categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+            viewAccountId={account.id}
+          />
         )}
       </section>
     </div>

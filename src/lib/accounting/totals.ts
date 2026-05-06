@@ -1,10 +1,35 @@
 import 'server-only';
-import { and, between, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, between, eq, inArray, isNotNull, or, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { recurringRules, transactions } from '@/db/schema';
 import type { UserId } from '@/types/ids';
 import { EXPENSE_KINDS, INCOME_KINDS, type TransactionKind } from './kinds';
 import { generateVirtualOccurrences, type RecurringRuleForVirtuals } from './virtuals';
+
+/**
+ * Devuelve un Set de claves `${ruleId}:${date}` con las ocurrencias REALES ya
+ * materializadas en el rango. Se usa para excluir virtuales duplicadas.
+ */
+async function materializedKeySet(userId: UserId, from: string, to: string): Promise<Set<string>> {
+  const rows = await db
+    .select({
+      ruleId: transactions.recurringRuleId,
+      date: transactions.transactionDate,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        between(transactions.transactionDate, from, to),
+        isNotNull(transactions.recurringRuleId),
+      ),
+    );
+  const set = new Set<string>();
+  for (const r of rows) {
+    if (r.ruleId) set.add(`${r.ruleId}:${r.date}`);
+  }
+  return set;
+}
 
 export interface PeriodTotals {
   incomeMinor: bigint;
@@ -67,10 +92,12 @@ export async function getPeriodTotals(
       .select()
       .from(recurringRules)
       .where(and(eq(recurringRules.userId, userId), eq(recurringRules.isActive, true)));
+    const matSet = await materializedKeySet(userId, from, to);
     for (const r of rules) {
       const rule = ruleToVirtual(r);
       const occurrences = generateVirtualOccurrences(rule, to, from);
       for (const v of occurrences) {
+        if (matSet.has(`${r.id}:${v.transactionDate}`)) continue;
         byKind[v.kind] += v.amountMinor;
       }
     }
@@ -161,10 +188,12 @@ async function getPeriodTotalsForAccount(
       .select()
       .from(recurringRules)
       .where(and(...ruleConds));
+    const matSet = await materializedKeySet(userId, from, to);
     for (const r of rules) {
       const rule = ruleToVirtual(r);
       const occurrences = generateVirtualOccurrences(rule, to, from);
       for (const v of occurrences) {
+        if (matSet.has(`${r.id}:${v.transactionDate}`)) continue;
         byKind[v.kind] += v.amountMinor;
         if (v.accountId === accountId) {
           moneyIn += originDeltaIn(v.kind, v.amountMinor);

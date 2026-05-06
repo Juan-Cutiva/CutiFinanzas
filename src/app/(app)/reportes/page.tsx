@@ -43,7 +43,9 @@ export default async function ReportesPage({ searchParams }: PageProps) {
   const totalIncome = Number(totals.incomeMinor) / 100;
   const totalExpense = Number(totals.expenseMinor) / 100;
   const totalSavings = Number(totals.savingsMinor) / 100;
-  const balance = totalIncome - totalExpense - totalSavings;
+  // savings_contribution ya está incluido en totalExpense (vive en EXPENSE_KINDS),
+  // así que NO restamos savings aquí — sería doble.
+  const balance = totalIncome - totalExpense;
 
   const chartData = categories
     .map((c) => ({

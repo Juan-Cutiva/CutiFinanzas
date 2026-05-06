@@ -29,6 +29,7 @@ import {
   deltaFor,
   isExpenseOfMonth,
   isIncomeOfMonth,
+  isInternal,
   type TransactionKind,
 } from '@/lib/accounting/shared';
 import { dayjs, formatAmount, formatDate } from '@/lib/format';
@@ -353,8 +354,7 @@ interface RowProps {
 function TxRow({ tx, onView, onEdit, onDelete }: RowProps) {
   const expense = isExpenseOfMonth(tx.kind);
   const income = isIncomeOfMonth(tx.kind);
-  const internal =
-    tx.kind === 'transfer' || tx.kind === 'cc_charge' || tx.kind === 'savings_contribution';
+  const internal = isInternal(tx.kind);
   const amountMajor = Number(tx.amountMinor) / 100;
   const Icon = iconForKind(tx.kind);
   const isVirtual = tx.isVirtual === true;

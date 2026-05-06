@@ -211,7 +211,10 @@ export async function updateRecurring(userId: UserId, input: UpdateRecurringInpu
 
   await db
     .update(recurringRules)
-    .set({ endDate: dayBefore, isActive: false, updatedAt: sql`now()` })
+    // No seteamos isActive=false porque la regla puede tener ocurrencias
+    // pendientes entre nextOccurrenceDate y dayBefore (si cutoff > next). Cron y
+    // virtual generator respetan endDate automáticamente.
+    .set({ endDate: dayBefore, updatedAt: sql`now()` })
     .where(eq(recurringRules.id, oldRule.id));
 
   const [row] = await db
@@ -281,7 +284,10 @@ export async function deleteRecurring(userId: UserId, input: DeleteRecurringInpu
   // para uso personal. Cierra primero la regla, luego borra ocurrencias futuras.
   await db
     .update(recurringRules)
-    .set({ endDate: dayBefore, isActive: false, updatedAt: sql`now()` })
+    // No seteamos isActive=false porque la regla puede tener ocurrencias
+    // pendientes entre nextOccurrenceDate y dayBefore (si cutoff > next). Cron y
+    // virtual generator respetan endDate automáticamente.
+    .set({ endDate: dayBefore, updatedAt: sql`now()` })
     .where(eq(recurringRules.id, ruleId));
   await db
     .delete(transactions)
@@ -368,7 +374,10 @@ export async function editVirtualOccurrence(userId: UserId, input: EditVirtualIn
 
     await db
       .update(recurringRules)
-      .set({ endDate: dayBefore, isActive: false, updatedAt: sql`now()` })
+      // No seteamos isActive=false porque la regla puede tener ocurrencias
+      // pendientes entre nextOccurrenceDate y dayBefore (si cutoff > next). Cron y
+      // virtual generator respetan endDate automáticamente.
+      .set({ endDate: dayBefore, updatedAt: sql`now()` })
       .where(eq(recurringRules.id, rule.id));
 
     // Materializa primera ocurrencia con la nueva regla.
@@ -463,7 +472,10 @@ export async function deleteVirtualOccurrence(userId: UserId, input: DeleteVirtu
     const dayBefore = dayjs(cutoff).subtract(1, 'day').format('YYYY-MM-DD');
     await db
       .update(recurringRules)
-      .set({ endDate: dayBefore, isActive: false, updatedAt: sql`now()` })
+      // No seteamos isActive=false porque la regla puede tener ocurrencias
+      // pendientes entre nextOccurrenceDate y dayBefore (si cutoff > next). Cron y
+      // virtual generator respetan endDate automáticamente.
+      .set({ endDate: dayBefore, updatedAt: sql`now()` })
       .where(eq(recurringRules.id, rule.id));
     await db
       .delete(transactions)

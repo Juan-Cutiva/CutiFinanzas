@@ -58,7 +58,8 @@ export interface MonthlyReportData {
 }
 
 export function MonthlyReportPDF({ data }: { data: MonthlyReportData }) {
-  const balance = data.totals.income - data.totals.expense - data.totals.savings;
+  // savings ya está dentro de expense (decisión de producto: ahorrar es "gasto").
+  const balance = data.totals.income - data.totals.expense;
   const fmt = (n: number) => formatAmount(n, data.currency);
 
   return (

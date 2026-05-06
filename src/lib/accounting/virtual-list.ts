@@ -1,7 +1,7 @@
 import 'server-only';
-import { and, eq } from 'drizzle-orm';
+import { and, between, eq, isNotNull } from 'drizzle-orm';
 import { db } from '@/db/client';
-import { recurringRules } from '@/db/schema';
+import { recurringRules, transactions } from '@/db/schema';
 import type { UserId } from '@/types/ids';
 import type { TransactionKind } from './kinds';
 import { monthRange } from './period-bounds';
@@ -52,6 +52,7 @@ export async function listVirtualsForMonth(
 ): Promise<VirtualTxItem[]> {
   const { from, to } = monthRange(year, month);
 
+  // 1. Reglas activas
   const rules = await db.query.recurringRules.findMany({
     where: and(eq(recurringRules.userId, userId), eq(recurringRules.isActive, true)),
     with: {
@@ -62,12 +63,38 @@ export async function listVirtualsForMonth(
       savingsGoal: true,
     },
   });
+  if (rules.length === 0) return [];
+
+  // 2. Set de pares (ruleId, date) ya MATERIALIZADOS en el mes — para no duplicar.
+  // Esto cubre los casos donde:
+  //   - el cron ya creó la fila pero la regla aún no actualizó nextOccurrenceDate
+  //   - el usuario editó una virtual (this_one) y la materializó manualmente
+  //   - el usuario creó una recurrente cuya primera ocurrencia ya está en BD
+  const materialized = await db
+    .select({
+      ruleId: transactions.recurringRuleId,
+      date: transactions.transactionDate,
+    })
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        between(transactions.transactionDate, from, to),
+        isNotNull(transactions.recurringRuleId),
+      ),
+    );
+  const materializedKeys = new Set<string>();
+  for (const m of materialized) {
+    if (m.ruleId) materializedKeys.add(`${m.ruleId}:${m.date}`);
+  }
 
   const out: VirtualTxItem[] = [];
   for (const r of rules) {
     const ruleVirt = ruleToVirtual(r);
     const occurrences = generateVirtualOccurrences(ruleVirt, to, from);
     for (const v of occurrences) {
+      // Skip si ya hay una transacción real para esa regla y fecha.
+      if (materializedKeys.has(`${r.id}:${v.transactionDate}`)) continue;
       out.push({
         id: `virtual:${r.id}:${v.transactionDate}`,
         kind: r.kind as TransactionKind,
