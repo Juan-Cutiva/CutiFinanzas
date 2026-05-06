@@ -70,6 +70,8 @@ interface SavingsOption {
 
 interface Props {
   accounts: AccountOption[];
+  /** Proyección por cuenta y mes futuro: clave `${accountId}:${YYYY-MM}` → minor (string). */
+  projectedByMonth?: Record<string, string>;
   categories: CategoryOption[];
   debts?: DebtOption[];
   savingsGoals?: SavingsOption[];
@@ -92,6 +94,7 @@ const KIND_LABELS_FORM: Record<TransactionKind, string> = {
 
 export function TransactionForm({
   accounts,
+  projectedByMonth,
   categories,
   debts = [],
   savingsGoals = [],
@@ -154,6 +157,8 @@ export function TransactionForm({
   const isSavingsContribution = watchedKind === 'savings_contribution';
 
   const needsCategory = isExpense || isIncome || isRefund || isCcCharge;
+  // cc_payment y loan_payment también pueden tener categoría (opcional, para clasificar el gasto).
+  const offersCategory = needsCategory || isCcPayment || isLoanPayment;
   const supportsRecurring = !isRefund && !isTransfer; // refund y transfer son siempre puntuales
 
   // Filtrar cuentas según el kind
@@ -187,7 +192,7 @@ export function TransactionForm({
   // biome-ignore lint/correctness/useExhaustiveDependencies: solo reaccionamos al cambio de kind
   React.useEffect(() => {
     // Reset campos según kind
-    if (!needsCategory) form.setValue('categoryId', null);
+    if (!offersCategory) form.setValue('categoryId', null);
     if (!isLoanPayment) form.setValue('debtId', null);
     if (!isSavingsContribution) form.setValue('savingsGoalId', null);
     if (!isTransfer && !isCcPayment) form.setValue('counterAccountId', null);
@@ -213,19 +218,39 @@ export function TransactionForm({
     if (!supportsRecurring) setIsRecurring(false);
   }, [watchedKind]);
 
+  const watchedDate = form.watch('transactionDate');
   const accountBalanceMajor = selectedAccount?.realMinor
     ? Number(BigInt(selectedAccount.realMinor)) / 100
     : 0;
-  const accountProjectedMajor = selectedAccount?.projectedMinor
-    ? Number(BigInt(selectedAccount.projectedMinor)) / 100
-    : accountBalanceMajor;
+
+  // Proyectado FIN DE MES de la fecha seleccionada (no del mes actual). Si el usuario
+  // está registrando un movimiento en junio, mostramos el proyectado fin de junio.
+  const selectedYM = watchedDate ? watchedDate.slice(0, 7) : '';
+  const projectedKey = selectedAccount && selectedYM ? `${selectedAccount.id}:${selectedYM}` : '';
+  const projectedFromMap = projectedByMonth?.[projectedKey];
+  const accountProjectedMajor = projectedFromMap
+    ? Number(BigInt(projectedFromMap)) / 100
+    : selectedAccount?.projectedMinor
+      ? Number(BigInt(selectedAccount.projectedMinor)) / 100
+      : accountBalanceMajor;
   // Mostramos proyectado siempre (excepto para CC, que tiene su propia métrica de cupo).
   const showProjection = selectedAccount && selectedAccount.type !== 'credit_card';
+  // Etiqueta del mes proyectado, solo visible si difiere del actual.
+  const projectedMonthLabel = selectedYM
+    ? new Date(`${selectedYM}-01T00:00:00`).toLocaleDateString('es-CO', {
+        month: 'long',
+        year: 'numeric',
+      })
+    : '';
   const ccLimitMajor = selectedAccount?.creditLimitMinor
     ? Number(BigInt(selectedAccount.creditLimitMinor)) / 100
     : 0;
   const ccAvailable = isCcCharge ? Math.max(0, ccLimitMajor - accountBalanceMajor) : 0;
 
+  // Estos checks ya no BLOQUEAN el submit (solo advierten visualmente).
+  // El usuario puede registrar movimientos en cualquier mes, incluso si en ese momento
+  // el saldo proyectado parece insuficiente — porque puede tener ingresos futuros aún
+  // no reflejados o estar planificando un mes adelantado.
   const overspending =
     !isCcCharge &&
     !isIncome &&
@@ -478,7 +503,7 @@ export function TransactionForm({
                       {showProjection ? (
                         <>
                           {' '}
-                          · proyectado fin de mes{' '}
+                          · proyectado fin de {projectedMonthLabel || 'mes'}{' '}
                           <span
                             className={`font-mono tabular-nums font-semibold ${
                               accountProjectedMajor >= 0
@@ -504,11 +529,12 @@ export function TransactionForm({
 
         {overspending ? (
           <p className="rounded-md border border-(--expense)/40 bg-(--expense)/10 px-3 py-2 text-xs text-amount-negative">
-            No tienes saldo suficiente. Disponible:{' '}
+            No tienes saldo proyectado suficiente al fin de {projectedMonthLabel || 'mes'}:{' '}
             {formatAmount(
-              accountBalanceMajor,
+              accountProjectedMajor,
               (selectedAccount?.currency ?? 'COP') as CurrencyCode,
             )}
+            .
           </p>
         ) : null}
         {overCcLimit ? (
@@ -566,31 +592,39 @@ export function TransactionForm({
           </p>
         ) : null}
 
-        {/* Categoría */}
-        {needsCategory ? (
+        {/* Categoría — obligatoria para gasto/ingreso/refund/cc_charge,
+            opcional para cc_payment / loan_payment para clasificarlos. */}
+        {offersCategory ? (
           <FormField
             control={form.control}
             name="categoryId"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Categoría</FormLabel>
-                <Select value={field.value ?? ''} onValueChange={field.onChange}>
-                  <FormControl>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Selecciona categoría" />
-                    </SelectTrigger>
-                  </FormControl>
-                  <SelectContent>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FormMessage />
-              </FormItem>
-            )}
+            render={({ field }) => {
+              const isOptional = !needsCategory;
+              return (
+                <FormItem>
+                  <FormLabel>Categoría {isOptional ? '(opcional)' : ''}</FormLabel>
+                  <Select
+                    value={field.value ?? '__none__'}
+                    onValueChange={(v) => field.onChange(v === '__none__' ? null : v)}
+                  >
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona categoría" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {isOptional ? <SelectItem value="__none__">Sin categoría</SelectItem> : null}
+                      {categories.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>
+                          {c.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              );
+            }}
           />
         ) : null}
 
@@ -632,7 +666,7 @@ export function TransactionForm({
 
         {overpayingDebt && selectedDebt ? (
           <p className="rounded-md border border-(--expense)/40 bg-(--expense)/10 px-3 py-2 text-xs text-amount-negative">
-            El pago supera el saldo (
+            El pago supera el saldo del préstamo (
             {formatAmount(debtBalanceMajor, selectedDebt.currency as CurrencyCode)}
             ).
           </p>

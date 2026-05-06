@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { Card, CardContent } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getOrCreateUser } from '@/db/queries/users';
+import { listCategoriesByUser } from '@/features/categories/queries';
 import {
   TransactionList,
   type TxListItem,
@@ -31,9 +32,10 @@ export default async function IngresosPage({ searchParams }: PageProps) {
   const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
   const monthLabel = formatMonthYear(`${year}-${String(month).padStart(2, '0')}-01`);
 
-  const [items, allVirtuals] = await Promise.all([
+  const [items, allVirtuals, categories] = await Promise.all([
     listIncomeByMonth(userId, year, month),
     listVirtualsForMonth(userId, year, month),
+    listCategoriesByUser(userId),
   ]);
   const incomeKindsSet = new Set<TransactionKind>(INCOME_KINDS);
   const virtuals = allVirtuals.filter((v) => incomeKindsSet.has(v.kind));
@@ -110,7 +112,10 @@ export default async function IngresosPage({ searchParams }: PageProps) {
           description="Toca el botón ＋ para registrar un ingreso."
         />
       ) : (
-        <TransactionList items={itemsForList} />
+        <TransactionList
+          items={itemsForList}
+          categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+        />
       )}
     </div>
   );

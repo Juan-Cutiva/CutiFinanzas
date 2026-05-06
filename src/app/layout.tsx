@@ -65,7 +65,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
         suppressHydrationWarning
       >
-        <body className="min-h-dvh flex flex-col bg-background text-foreground">
+        <body
+          className="min-h-dvh flex flex-col bg-background text-foreground"
+          suppressHydrationWarning
+        >
           <ThemeProvider
             attribute="class"
             defaultTheme="dark"

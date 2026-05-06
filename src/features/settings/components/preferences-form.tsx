@@ -6,6 +6,7 @@ import * as React from 'react';
 import { useForm } from 'react-hook-form';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Form,
   FormControl,
@@ -32,6 +33,12 @@ import {
   updateUserPreferencesSchema,
 } from '../schema';
 
+interface AccountOpt {
+  id: string;
+  name: string;
+  type: string;
+}
+
 interface Props {
   defaults: {
     name: string | null;
@@ -39,12 +46,29 @@ interface Props {
     locale: string;
     timezone: string;
     payAnchorDates: number[];
+    primaryAccountId: string | null;
+    dashboardAccountIds: string[] | null;
   };
+  accounts: AccountOpt[];
 }
 
-export function PreferencesForm({ defaults }: Props) {
+const NONE_VALUE = '__none__';
+
+export function PreferencesForm({ defaults, accounts }: Props) {
   const [anchorsRaw, setAnchorsRaw] = React.useState(
     (defaults.payAnchorDates ?? [6, 21]).join(', '),
+  );
+  // null en BD = todas visibles. Internamente trabajamos con un Set.
+  const [visibleSet, setVisibleSet] = React.useState<Set<string>>(() => {
+    if (defaults.dashboardAccountIds && defaults.dashboardAccountIds.length > 0) {
+      return new Set(defaults.dashboardAccountIds);
+    }
+    return new Set(accounts.map((a) => a.id));
+  });
+
+  const assetAccounts = React.useMemo(
+    () => accounts.filter((a) => a.type !== 'credit_card'),
+    [accounts],
   );
 
   const form = useForm<UpdateUserPreferencesInput>({
@@ -55,6 +79,7 @@ export function PreferencesForm({ defaults }: Props) {
       locale: defaults.locale,
       timezone: defaults.timezone,
       payAnchorDates: defaults.payAnchorDates ?? [6, 21],
+      primaryAccountId: defaults.primaryAccountId,
     },
   });
 
@@ -68,7 +93,22 @@ export function PreferencesForm({ defaults }: Props) {
       .split(',')
       .map((s) => Number.parseInt(s.trim(), 10))
       .filter((n) => Number.isFinite(n) && n >= 1 && n <= 31);
-    execute({ ...data, payAnchorDates: anchors });
+    // Si todas están seleccionadas, mandamos null (default = mostrar todas).
+    const dashboardIds = visibleSet.size === accounts.length ? null : Array.from(visibleSet);
+    execute({
+      ...data,
+      payAnchorDates: anchors,
+      dashboardAccountIds: dashboardIds,
+    });
+  }
+
+  function toggleVisible(id: string) {
+    setVisibleSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   }
 
   return (
@@ -150,6 +190,67 @@ export function PreferencesForm({ defaults }: Props) {
             Días del mes en que cobras (separados por coma). Determinan los cortes de quincena. Ej:{' '}
             <code>6, 21</code> para cobro día 6 y día 21.
           </p>
+        </div>
+
+        <FormField
+          control={form.control}
+          name="primaryAccountId"
+          render={({ field }) => (
+            <FormItem className="md:col-span-2">
+              <FormLabel>Cuenta principal (recibe la nómina)</FormLabel>
+              <Select
+                value={field.value ?? NONE_VALUE}
+                onValueChange={(v) => field.onChange(v === NONE_VALUE ? null : v)}
+              >
+                <FormControl>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                </FormControl>
+                <SelectContent>
+                  <SelectItem value={NONE_VALUE}>— Ninguna (sumar todas las cuentas) —</SelectItem>
+                  {assetAccounts.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-sm text-muted-foreground">
+                Si la defines, el desglose por quincena en el dashboard solo cuenta los movimientos
+                de esta cuenta. Útil para separar tu nómina de tus ahorros.
+              </p>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+
+        <div className="md:col-span-2 flex flex-col gap-2">
+          <Label>Cuentas visibles en el dashboard</Label>
+          <p className="text-xs text-muted-foreground">
+            Marca las cuentas que se incluyen en el balance del dashboard. Las que desmarques siguen
+            funcionando normalmente, solo se ocultan del KPI principal.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {accounts.map((a) => {
+              const id = `dash-acc-${a.id}`;
+              return (
+                <div
+                  key={a.id}
+                  className="flex items-center gap-2 rounded-md border border-border/60 bg-muted/30 px-3 py-2 text-sm"
+                >
+                  <Checkbox
+                    id={id}
+                    checked={visibleSet.has(a.id)}
+                    onCheckedChange={() => toggleVisible(a.id)}
+                  />
+                  <Label htmlFor={id} className="cursor-pointer truncate font-normal">
+                    {a.name}
+                  </Label>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <FormField

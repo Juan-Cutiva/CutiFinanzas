@@ -21,6 +21,19 @@ export const users = pgTable('users', {
     .array()
     .notNull()
     .default(sql`ARRAY[6, 21]::integer[]`),
+  /**
+   * ID de la cuenta principal — la que recibe la nómina/ingreso primario.
+   * Si está definida, el desglose por quincena en el dashboard solo cuenta
+   * los movimientos de ESTA cuenta (mental model "mi quincena"). Si es null,
+   * se cuentan todas las cuentas asset.
+   */
+  primaryAccountId: text('primary_account_id'),
+  /**
+   * Lista de IDs de cuentas que se muestran en el dashboard (KPI "balance",
+   * gráficas, etc). Si está vacía o null, se muestran TODAS las cuentas.
+   * Útil para esconder cuentas auxiliares (Nequi de bolsillo, etc).
+   */
+  dashboardAccountIds: text('dashboard_account_ids').array(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().default(sql`now()`),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().default(sql`now()`),
 });

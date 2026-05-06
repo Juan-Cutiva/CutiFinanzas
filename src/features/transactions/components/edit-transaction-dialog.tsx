@@ -16,6 +16,13 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MoneyInput } from '@/components/ui/money-input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { KIND_LABELS, type TransactionKind } from '@/lib/accounting/shared';
 import { updateRecurringAction, updateTransactionAction } from '../actions';
@@ -28,19 +35,29 @@ export interface EditableTx {
   transactionDate: string;
   description: string | null;
   notes: string | null;
+  categoryId: string | null;
   recurringRuleId: string | null;
+}
+
+export interface CategoryOption {
+  id: string;
+  name: string;
 }
 
 interface Props {
   tx: EditableTx | null;
+  categories: CategoryOption[];
   onClose: () => void;
 }
 
-export function EditTransactionDialog({ tx, onClose }: Props) {
+const NONE_CATEGORY = '__none__';
+
+export function EditTransactionDialog({ tx, categories, onClose }: Props) {
   const [amount, setAmount] = React.useState<number | undefined>(undefined);
   const [transactionDate, setTransactionDate] = React.useState<string>('');
   const [description, setDescription] = React.useState<string>('');
   const [notes, setNotes] = React.useState<string>('');
+  const [categoryId, setCategoryId] = React.useState<string | null>(null);
   const [mode, setMode] = React.useState<'this_one' | 'forward'>('forward');
 
   React.useEffect(() => {
@@ -49,6 +66,7 @@ export function EditTransactionDialog({ tx, onClose }: Props) {
     setTransactionDate(tx.transactionDate);
     setDescription(tx.description ?? '');
     setNotes(tx.notes ?? '');
+    setCategoryId(tx.categoryId);
     setMode(tx.recurringRuleId ? 'forward' : 'this_one');
   }, [tx]);
 
@@ -72,6 +90,9 @@ export function EditTransactionDialog({ tx, onClose }: Props) {
 
   const isPending = updateOnce.isPending || updateRec.isPending;
   const isRecurring = !!tx?.recurringRuleId;
+  // Categoría aplica a expense, cc_charge, cc_payment, income, refund, loan_payment
+  // (todos excepto transfer y savings_contribution).
+  const supportsCategory = tx && tx.kind !== 'transfer' && tx.kind !== 'savings_contribution';
 
   function submit() {
     if (!tx) return;
@@ -81,6 +102,7 @@ export function EditTransactionDialog({ tx, onClose }: Props) {
         amount,
         description: description.trim() || null,
         notes: notes.trim() || null,
+        categoryId,
         mode,
       });
     } else {
@@ -90,6 +112,7 @@ export function EditTransactionDialog({ tx, onClose }: Props) {
         transactionDate,
         description: description.trim() || null,
         notes: notes.trim() || null,
+        categoryId,
       });
     }
   }
@@ -118,6 +141,28 @@ export function EditTransactionDialog({ tx, onClose }: Props) {
               <div className="grid gap-2">
                 <Label htmlFor="edit-date">Fecha</Label>
                 <DatePicker value={transactionDate} onChange={setTransactionDate} />
+              </div>
+            ) : null}
+
+            {supportsCategory ? (
+              <div className="grid gap-2">
+                <Label htmlFor="edit-category">Categoría</Label>
+                <Select
+                  value={categoryId ?? NONE_CATEGORY}
+                  onValueChange={(v) => setCategoryId(v === NONE_CATEGORY ? null : v)}
+                >
+                  <SelectTrigger id="edit-category">
+                    <SelectValue placeholder="Selecciona categoría" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE_CATEGORY}>— Sin categoría —</SelectItem>
+                    {categories.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             ) : null}
 

@@ -2,6 +2,7 @@ import { ListOrdered } from 'lucide-react';
 import type { Metadata } from 'next';
 import { EmptyState } from '@/components/ui/empty-state';
 import { getOrCreateUser } from '@/db/queries/users';
+import { listCategoriesByUser } from '@/features/categories/queries';
 import {
   TransactionList,
   type TxListItem,
@@ -28,9 +29,10 @@ export default async function TransaccionesPage({ searchParams }: PageProps) {
   const monthLabel = formatMonthYear(`${year}-${String(month).padStart(2, '0')}-01`);
 
   const userId = user.id as UserId;
-  const [items, virtuals] = await Promise.all([
+  const [items, virtuals, categories] = await Promise.all([
     listTransactionsByMonth(userId, year, month),
     listVirtualsForMonth(userId, year, month),
+    listCategoriesByUser(userId),
   ]);
 
   const realItems: TxListItem[] = items.map((t) => ({
@@ -80,7 +82,10 @@ export default async function TransaccionesPage({ searchParams }: PageProps) {
           description="Toca el botón ＋ abajo a la derecha para registrar tu primer ingreso o gasto."
         />
       ) : (
-        <TransactionList items={itemsForList} />
+        <TransactionList
+          items={itemsForList}
+          categories={categories.map((c) => ({ id: c.id, name: c.name }))}
+        />
       )}
     </div>
   );

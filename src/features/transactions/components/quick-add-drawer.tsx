@@ -39,6 +39,8 @@ interface SavingsOption {
 
 interface Props {
   accounts: AccountOption[];
+  /** Proyección por cuenta y mes futuro: clave `${accountId}:${YYYY-MM}` → minor en string. */
+  projectedByMonth?: Record<string, string>;
   categories: CategoryOption[];
   debts: DebtOption[];
   savingsGoals: SavingsOption[];
@@ -48,6 +50,7 @@ interface Props {
 
 export function QuickAddDrawer({
   accounts,
+  projectedByMonth,
   categories,
   debts,
   savingsGoals,
@@ -79,6 +82,7 @@ export function QuickAddDrawer({
           <div className="px-4 pb-6 pt-2 md:px-0 md:pb-0">
             <TransactionForm
               accounts={accounts}
+              projectedByMonth={projectedByMonth}
               categories={categories}
               debts={debts}
               savingsGoals={savingsGoals}

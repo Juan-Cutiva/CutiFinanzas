@@ -5,13 +5,11 @@ export const updateUserPreferencesSchema = z.object({
   locale: z.string().min(2).max(10).optional(),
   timezone: z.string().min(2).max(64).optional(),
   name: z.string().trim().max(200).optional(),
-  /**
-   * Días del mes en que cobras (anchors). Determinan los cortes de quincena.
-   * Ej: [6, 21] para cobro día 6 y día 21.
-   * Vacío o 1 anchor → un solo período (mes completo).
-   * 2 anchors → 2 quincenas. N anchors → N períodos.
-   */
   payAnchorDates: z.array(z.number().int().min(1).max(31)).min(0).max(4).optional(),
+  /** ID de la cuenta principal — la que recibe la nómina. Filtra las quincenas del dashboard. */
+  primaryAccountId: z.string().nullable().optional(),
+  /** IDs de cuentas visibles en el dashboard. null/vacío = mostrar todas. */
+  dashboardAccountIds: z.array(z.string()).nullable().optional(),
 });
 
 export type UpdateUserPreferencesInput = z.infer<typeof updateUserPreferencesSchema>;

@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { getOrCreateUser } from '@/db/queries/users';
 import { env } from '@/env';
+import { listAccountsByUser } from '@/features/accounts/queries';
 import { CategoryList } from '@/features/categories/components/category-list';
 import { CreateCategoryButton } from '@/features/categories/components/create-category-button';
 import { SeedDefaultCategoriesButton } from '@/features/categories/components/seed-button';
@@ -16,7 +17,11 @@ export const dynamic = 'force-dynamic';
 
 export default async function AjustesPage() {
   const user = await getOrCreateUser();
-  const categories = await listCategoriesByUser(user.id as UserId);
+  const userId = user.id as UserId;
+  const [categories, accounts] = await Promise.all([
+    listCategoriesByUser(userId),
+    listAccountsByUser(userId),
+  ]);
 
   return (
     <div className="mx-auto w-full max-w-3xl space-y-6">
@@ -38,7 +43,10 @@ export default async function AjustesPage() {
               locale: user.locale,
               timezone: user.timezone,
               payAnchorDates: user.payAnchorDates ?? [6, 21],
+              primaryAccountId: user.primaryAccountId ?? null,
+              dashboardAccountIds: user.dashboardAccountIds ?? null,
             }}
+            accounts={accounts.map((a) => ({ id: a.id, name: a.name, type: a.type }))}
           />
           <p className="mt-4 text-xs text-muted-foreground">
             Correo: <span className="font-mono">{user.email}</span> (gestionado por Clerk).

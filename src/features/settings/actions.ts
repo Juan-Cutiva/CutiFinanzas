@@ -22,6 +22,15 @@ export const updateUserPreferencesAction = authedAction
       ).sort((a, b) => a - b);
       patch.payAnchorDates = sanitized;
     }
+    if (parsedInput.primaryAccountId !== undefined) {
+      patch.primaryAccountId = parsedInput.primaryAccountId || null;
+    }
+    if (parsedInput.dashboardAccountIds !== undefined) {
+      patch.dashboardAccountIds =
+        parsedInput.dashboardAccountIds && parsedInput.dashboardAccountIds.length > 0
+          ? parsedInput.dashboardAccountIds
+          : null;
+    }
 
     const [row] = await db.update(users).set(patch).where(eq(users.id, ctx.userId)).returning();
     revalidatePath('/ajustes');

@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, between, eq, inArray, sql } from 'drizzle-orm';
+import { and, between, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { recurringRules, transactions } from '@/db/schema';
 import type { UserId } from '@/types/ids';
@@ -26,17 +26,36 @@ export async function getPeriodTotals(
   userId: UserId,
   from: string,
   to: string,
-  options: { includeVirtuals?: boolean; today?: string } = {},
+  options: {
+    includeVirtuals?: boolean;
+    today?: string;
+    /**
+     * Si se define, solo cuenta movimientos donde la cuenta es origen (`accountId`)
+     * O destino (`counterAccountId`). Útil para "balance por quincena de mi cuenta nómina".
+     */
+    accountId?: string;
+  } = {},
 ): Promise<PeriodTotals> {
-  const { includeVirtuals = false, today } = options;
+  const { includeVirtuals = false, today, accountId } = options;
   // No filtramos por isPaid (es solo flag visual de confirmación manual).
+  const baseConds = [
+    eq(transactions.userId, userId),
+    between(transactions.transactionDate, from, to),
+  ];
+  if (accountId) {
+    const accountFilter = or(
+      eq(transactions.accountId, accountId),
+      eq(transactions.counterAccountId, accountId),
+    );
+    if (accountFilter) baseConds.push(accountFilter);
+  }
   const realRows = await db
     .select({
       kind: transactions.kind,
       sum: sql<string | null>`COALESCE(SUM(${transactions.amountMinor}), 0)`,
     })
     .from(transactions)
-    .where(and(eq(transactions.userId, userId), between(transactions.transactionDate, from, to)))
+    .where(and(...baseConds))
     .groupBy(transactions.kind);
 
   const byKind = emptyByKind();
@@ -48,10 +67,18 @@ export async function getPeriodTotals(
     // Las virtuales son ocurrencias FUTURAS aún no materializadas. Se generan
     // desde rule.nextOccurrenceDate (que ya excluye lo materializado) hasta `to`.
     // Filtramos por `from` para mantener el rango del período.
+    const ruleConds = [eq(recurringRules.userId, userId), eq(recurringRules.isActive, true)];
+    if (accountId) {
+      const ruleFilter = or(
+        eq(recurringRules.accountId, accountId),
+        eq(recurringRules.counterAccountId, accountId),
+      );
+      if (ruleFilter) ruleConds.push(ruleFilter);
+    }
     const rules = await db
       .select()
       .from(recurringRules)
-      .where(and(eq(recurringRules.userId, userId), eq(recurringRules.isActive, true)));
+      .where(and(...ruleConds));
     for (const r of rules) {
       const rule = ruleToVirtual(r);
       const occurrences = generateVirtualOccurrences(rule, to, from);

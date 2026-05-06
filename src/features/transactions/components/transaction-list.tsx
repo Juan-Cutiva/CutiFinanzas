@@ -30,7 +30,11 @@ import { dayjs, formatAmount, formatDate } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { deleteRecurringAction, deleteTransactionAction, togglePaidAction } from '../actions';
-import { type EditableTx, EditTransactionDialog } from './edit-transaction-dialog';
+import {
+  type CategoryOption,
+  type EditableTx,
+  EditTransactionDialog,
+} from './edit-transaction-dialog';
 import { type ViewableTx, ViewTransactionDialog } from './view-transaction-dialog';
 
 export interface TxListItem {
@@ -86,9 +90,10 @@ function iconForKind(kind: TransactionKind) {
 
 interface Props {
   items: TxListItem[];
+  categories?: CategoryOption[];
 }
 
-export function TransactionList({ items }: Props) {
+export function TransactionList({ items, categories = [] }: Props) {
   const [pendingDelete, setPendingDelete] = useState<TxListItem | null>(null);
   const [deleteScope, setDeleteScope] = useState<'this_one' | 'forward'>('this_one');
   const [viewing, setViewing] = useState<ViewableTx | null>(null);
@@ -197,6 +202,7 @@ export function TransactionList({ items }: Props) {
                           transactionDate: tx.transactionDate,
                           description: tx.description,
                           notes: tx.notes,
+                          categoryId: tx.categoryId,
                           recurringRuleId: tx.recurringRuleId,
                         })
                       }
@@ -274,7 +280,11 @@ export function TransactionList({ items }: Props) {
       </Dialog>
 
       <ViewTransactionDialog tx={viewing} onClose={() => setViewing(null)} />
-      <EditTransactionDialog tx={editing} onClose={() => setEditing(null)} />
+      <EditTransactionDialog
+        tx={editing}
+        categories={categories}
+        onClose={() => setEditing(null)}
+      />
     </>
   );
 }

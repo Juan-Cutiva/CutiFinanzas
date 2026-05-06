@@ -55,15 +55,22 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const isFutureMonth = to > todayIso;
 
   const subPeriods = subPeriodsForMonth(year, month, user.payAnchorDates ?? [6, 21]);
+  const primaryAccountId = user.primaryAccountId ?? undefined;
 
   const [accounts, totals, savingsState, debtsState, subPeriodTotals] = await Promise.all([
     listAccountsWithBalances(userId, to, todayIso),
     getPeriodTotals(userId, from, to, { includeVirtuals: isFutureMonth, today: todayIso }),
     listSavingsGoalsWithState(userId, todayIso),
     listDebtsWithState(userId, to, todayIso),
+    // Si hay cuenta principal definida, las quincenas filtran solo movimientos
+    // donde esa cuenta es origen o destino. Refleja el mental model "mi quincena".
     Promise.all(
       subPeriods.map((p) =>
-        getPeriodTotals(userId, p.from, p.to, { includeVirtuals: isFutureMonth, today: todayIso }),
+        getPeriodTotals(userId, p.from, p.to, {
+          includeVirtuals: isFutureMonth,
+          today: todayIso,
+          accountId: primaryAccountId,
+        }),
       ),
     ),
   ]);
@@ -75,7 +82,14 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     .filter((g) => g.currency === currency)
     .reduce((acc, g) => acc + Number(g.currentAmountMinor) / 100, 0);
 
-  const sameCurrency = accounts.filter((a) => a.currency === currency);
+  // Filtra cuentas según las que el usuario eligió mostrar en el dashboard.
+  // Si dashboardAccountIds es null/vacío, se muestran todas.
+  const visibleSet =
+    user.dashboardAccountIds && user.dashboardAccountIds.length > 0
+      ? new Set(user.dashboardAccountIds)
+      : null;
+  const visibleAccounts = visibleSet ? accounts.filter((a) => visibleSet.has(a.id)) : accounts;
+  const sameCurrency = visibleAccounts.filter((a) => a.currency === currency);
   const assetBalanceProj = sameCurrency
     .filter((a) => isAsset(a.type))
     .reduce((acc, a) => acc + Number(a.projectedMinor) / 100, 0);
