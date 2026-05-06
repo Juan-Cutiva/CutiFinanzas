@@ -24,11 +24,19 @@ export default async function ReporteAnualPage({ searchParams }: SearchParams) {
   const year = Number.parseInt(params.year ?? String(nowInTz(user.timezone).year()), 10);
 
   // Lanza los 12 totales mensuales en paralelo en vez de 12 awaits secuenciales.
+  // Para los meses que se extienden a futuro respecto a hoy incluye virtuales,
+  // así el reporte refleja también los movimientos programados (recurrentes
+  // pendientes de materializar).
+  const today = nowInTz(user.timezone).format('YYYY-MM-DD');
   const months = Array.from({ length: 12 }, (_, i) => i + 1);
   const totals = await Promise.all(
     months.map((m) => {
       const { from, to } = monthRange(year, m);
-      return getPeriodTotals(userId, from, to);
+      const isFutureRange = to > today;
+      return getPeriodTotals(userId, from, to, {
+        includeVirtuals: isFutureRange,
+        today,
+      });
     }),
   );
   const data = totals.map((t, i) => {

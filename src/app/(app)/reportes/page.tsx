@@ -33,11 +33,13 @@ export default async function ReportesPage({ searchParams }: PageProps) {
   const monthLabel = formatMonthYear(`${year}-${String(month).padStart(2, '0')}-01`);
 
   const { from, to } = monthRange(year, month);
+  const today = now.format('YYYY-MM-DD');
+  const isFutureMonth = to > today;
   const [totals, categories, byCategory, insights] = await Promise.all([
-    getPeriodTotals(userId, from, to),
+    getPeriodTotals(userId, from, to, { includeVirtuals: isFutureMonth, today }),
     listCategoriesByUser(userId),
-    getCategoryExpenseTotals(userId, from, to),
-    categoryInsights(userId, year, month, 3),
+    getCategoryExpenseTotals(userId, from, to, { includeVirtuals: isFutureMonth, today }),
+    categoryInsights(userId, year, month, 3, today),
   ]);
 
   const totalIncome = Number(totals.incomeMinor) / 100;

@@ -251,12 +251,19 @@ function counterDeltaOut(kind: TransactionKind, amount: bigint): bigint {
 /**
  * Lista los totales por categoría dentro de un rango — usado por presupuestos y reportes.
  * Solo considera kinds que cuentan como gasto del mes (`EXPENSE_KINDS`).
+ *
+ * `includeVirtuals`: agrega ocurrencias futuras de reglas recurrentes (no
+ * materializadas aún por el cron) hasta `to`, partiendo de `today`. Se usa para
+ * que reportes y dashboards de meses futuros reflejen los gastos programados.
  */
 export async function getCategoryExpenseTotals(
   userId: UserId,
   from: string,
   to: string,
+  options: { includeVirtuals?: boolean; today?: string } = {},
 ): Promise<Array<{ categoryId: string | null; totalMinor: bigint }>> {
+  const { includeVirtuals = false, today } = options;
+
   const rows = await db
     .select({
       categoryId: transactions.categoryId,
@@ -272,9 +279,33 @@ export async function getCategoryExpenseTotals(
     )
     .groupBy(transactions.categoryId);
 
-  return rows.map((r) => ({
-    categoryId: r.categoryId,
-    totalMinor: BigInt(r.sum ?? 0),
+  const totals = new Map<string | null, bigint>();
+  for (const r of rows) {
+    totals.set(r.categoryId, BigInt(r.sum ?? 0));
+  }
+
+  if (includeVirtuals && today) {
+    const expenseKinds = new Set<TransactionKind>(EXPENSE_KINDS as TransactionKind[]);
+    const rules = await db
+      .select()
+      .from(recurringRules)
+      .where(and(eq(recurringRules.userId, userId), eq(recurringRules.isActive, true)));
+    const matSet = await materializedKeySet(userId, from, to);
+    for (const r of rules) {
+      const rule = ruleToVirtual(r);
+      const occurrences = generateVirtualOccurrences(rule, to, from);
+      for (const v of occurrences) {
+        if (matSet.has(`${r.id}:${v.transactionDate}`)) continue;
+        if (!expenseKinds.has(v.kind)) continue;
+        const prev = totals.get(v.categoryId) ?? 0n;
+        totals.set(v.categoryId, prev + v.amountMinor);
+      }
+    }
+  }
+
+  return Array.from(totals.entries()).map(([categoryId, totalMinor]) => ({
+    categoryId,
+    totalMinor,
   }));
 }
 

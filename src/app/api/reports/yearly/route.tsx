@@ -23,19 +23,30 @@ export async function GET(req: NextRequest) {
     10,
   );
 
-  const months: YearlyReportData['months'] = [];
-  for (let m = 1; m <= 12; m++) {
-    const { from, to } = monthRange(year, m);
-    const totals = await getPeriodTotals(userId, from, to);
+  // 12 totales mensuales en paralelo. Incluye virtuales para los meses que se
+  // extienden a futuro respecto a hoy, para que el PDF refleje también los
+  // movimientos programados (recurrentes pendientes de materializar).
+  const todayIso = nowInTz(user.timezone).format('YYYY-MM-DD');
+  const monthList = Array.from({ length: 12 }, (_, i) => i + 1);
+  const totalsByMonth = await Promise.all(
+    monthList.map((m) => {
+      const { from, to } = monthRange(year, m);
+      return getPeriodTotals(userId, from, to, {
+        includeVirtuals: to > todayIso,
+        today: todayIso,
+      });
+    }),
+  );
+  const months: YearlyReportData['months'] = totalsByMonth.map((totals, i) => {
     const incomeMinor = Number(totals.incomeMinor);
     const expenseMinor = Number(totals.expenseMinor);
-    months.push({
-      month: m,
+    return {
+      month: i + 1,
       incomeMinor,
       expenseMinor,
       balanceMinor: incomeMinor - expenseMinor,
-    });
-  }
+    };
+  });
 
   const data: YearlyReportData = {
     year,

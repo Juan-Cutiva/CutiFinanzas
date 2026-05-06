@@ -25,11 +25,16 @@ export async function GET(req: NextRequest) {
   const month = Number.parseInt(url.searchParams.get('month') ?? String(today.month() + 1), 10);
 
   const { from, to } = monthRange(year, month);
+  const todayIso = today.format('YYYY-MM-DD');
+  const isFutureMonth = to > todayIso;
   const [totals, categories, budgets, byCategory] = await Promise.all([
-    getPeriodTotals(userId, from, to),
+    getPeriodTotals(userId, from, to, { includeVirtuals: isFutureMonth, today: todayIso }),
     listCategoriesByUser(userId),
     listBudgetsByMonth(userId, year, month),
-    getCategoryExpenseTotals(userId, from, to),
+    getCategoryExpenseTotals(userId, from, to, {
+      includeVirtuals: isFutureMonth,
+      today: todayIso,
+    }),
   ]);
 
   const data: MonthlyReportData = {
