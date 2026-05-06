@@ -176,7 +176,7 @@ export default async function AccountDetailPage({ params, searchParams }: Props)
             description="Esta cuenta aún no tiene transacciones en el período."
           />
         ) : (
-          <TransactionList items={itemsForList} />
+          <TransactionList items={itemsForList} viewAccountId={account.id} />
         )}
       </section>
     </div>

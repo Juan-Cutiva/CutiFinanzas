@@ -25,7 +25,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { isExpenseOfMonth, isIncomeOfMonth, type TransactionKind } from '@/lib/accounting/shared';
+import {
+  deltaFor,
+  isExpenseOfMonth,
+  isIncomeOfMonth,
+  type TransactionKind,
+} from '@/lib/accounting/shared';
 import { dayjs, formatAmount, formatDate } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import { cn } from '@/lib/utils';
@@ -91,9 +96,15 @@ function iconForKind(kind: TransactionKind) {
 interface Props {
   items: TxListItem[];
   categories?: CategoryOption[];
+  /**
+   * Si se define, el "neto del día" se calcula como el delta de ESA cuenta
+   * (incluyendo transferencias en/out, cc_payment como destino, etc).
+   * Sin viewAccountId: usa la lógica global (income − expense del mes).
+   */
+  viewAccountId?: string;
 }
 
-export function TransactionList({ items, categories = [] }: Props) {
+export function TransactionList({ items, categories = [], viewAccountId }: Props) {
   const [pendingDelete, setPendingDelete] = useState<TxListItem | null>(null);
   const [deleteScope, setDeleteScope] = useState<'this_one' | 'forward'>('this_one');
   const [viewing, setViewing] = useState<ViewableTx | null>(null);
@@ -142,12 +153,28 @@ export function TransactionList({ items, categories = [] }: Props) {
       <div className="space-y-6">
         {days.map((day) => {
           const dayItems = grouped[day] ?? [];
-          const dayNet = dayItems.reduce((acc, t) => {
-            const value = Number(t.amountMinor);
-            if (isIncomeOfMonth(t.kind)) return acc + value;
-            if (isExpenseOfMonth(t.kind)) return acc - value;
-            return acc;
-          }, 0);
+          // Si la lista se está mostrando en una cuenta específica, el "neto del día"
+          // refleja el delta REAL de esa cuenta (incluye transferencias, cc_payments,
+          // etc). Si no, usa la lógica global (income − expense, transferencias neutras).
+          const dayNet = viewAccountId
+            ? dayItems.reduce((acc, t) => {
+                const delta = deltaFor(
+                  {
+                    kind: t.kind,
+                    amountMinor: t.amountMinor,
+                    accountId: t.accountId,
+                    counterAccountId: t.counterAccountId,
+                  },
+                  viewAccountId,
+                );
+                return acc + Number(delta);
+              }, 0)
+            : dayItems.reduce((acc, t) => {
+                const value = Number(t.amountMinor);
+                if (isIncomeOfMonth(t.kind)) return acc + value;
+                if (isExpenseOfMonth(t.kind)) return acc - value;
+                return acc;
+              }, 0);
 
           return (
             <section key={day}>
@@ -397,10 +424,16 @@ function TxRow({ tx, onView, onEdit, onDelete }: RowProps) {
                   ? 'text-amount-negative'
                   : 'text-foreground'
           }`}
+          title={internal ? 'Movimiento interno — no afecta tu patrimonio total' : undefined}
         >
-          {formatAmount(income ? amountMajor : -amountMajor, tx.currency as CurrencyCode, {
-            signDisplay: income || expense ? 'always' : 'auto',
-          })}
+          {/* Para movimientos internos (transfer / cc_charge / savings_contribution)
+              mostramos el monto SIN signo y prefijado con ⇆ para que se note que es
+              un movimiento interno y no un gasto/ingreso real. */}
+          {internal
+            ? `⇆ ${formatAmount(amountMajor, tx.currency as CurrencyCode, { signDisplay: 'auto' })}`
+            : formatAmount(income ? amountMajor : -amountMajor, tx.currency as CurrencyCode, {
+                signDisplay: income || expense ? 'always' : 'auto',
+              })}
         </span>
         {!isVirtual ? (
           <>
