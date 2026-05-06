@@ -23,19 +23,19 @@ export default async function ReporteAnualPage({ searchParams }: SearchParams) {
   const params = await searchParams;
   const year = Number.parseInt(params.year ?? String(nowInTz(user.timezone).year()), 10);
 
-  const data: Array<{
-    month: number;
-    incomeMinor: number;
-    expenseMinor: number;
-    balanceMinor: number;
-  }> = [];
-  for (let m = 1; m <= 12; m++) {
-    const { from, to } = monthRange(year, m);
-    const t = await getPeriodTotals(userId, from, to);
+  // Lanza los 12 totales mensuales en paralelo en vez de 12 awaits secuenciales.
+  const months = Array.from({ length: 12 }, (_, i) => i + 1);
+  const totals = await Promise.all(
+    months.map((m) => {
+      const { from, to } = monthRange(year, m);
+      return getPeriodTotals(userId, from, to);
+    }),
+  );
+  const data = totals.map((t, i) => {
     const inc = Number(t.incomeMinor);
     const exp = Number(t.expenseMinor);
-    data.push({ month: m, incomeMinor: inc, expenseMinor: exp, balanceMinor: inc - exp });
-  }
+    return { month: i + 1, incomeMinor: inc, expenseMinor: exp, balanceMinor: inc - exp };
+  });
 
   const totalIncome = data.reduce((s, d) => s + d.incomeMinor, 0) / 100;
   const totalExpense = data.reduce((s, d) => s + d.expenseMinor, 0) / 100;

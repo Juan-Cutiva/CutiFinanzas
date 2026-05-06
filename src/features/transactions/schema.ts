@@ -22,7 +22,20 @@ export const RECURRENCE_LABELS: Record<RecurrenceFrequency, string> = {
 };
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Fecha inválida (YYYY-MM-DD)');
+const isoMonth = z.string().regex(/^\d{4}-\d{2}$/, 'Mes inválido (YYYY-MM)');
 const allKindEnum = z.enum(ALL_KINDS as unknown as [TransactionKind, ...TransactionKind[]]);
+
+/**
+ * Pide la proyección de saldo de una cuenta al fin de un mes específico (YYYY-MM).
+ * Se usa desde el form de Quick Add cuando el usuario elige una fecha en un mes
+ * futuro distinto al actual: el server calcula on-demand en vez de precalcular
+ * todos los meses al cargar la página.
+ */
+export const getAccountProjectionSchema = z.object({
+  accountId: z.string().min(1),
+  ym: isoMonth,
+});
+export type GetAccountProjectionInput = z.infer<typeof getAccountProjectionSchema>;
 
 /**
  * Input para crear una transacción (puntual o recurrente).

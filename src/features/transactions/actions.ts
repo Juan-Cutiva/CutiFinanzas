@@ -1,6 +1,8 @@
 'use server';
 
+import { getProjectedBalanceMinor, monthRange } from '@/lib/accounting';
 import { revalidateAfterTransaction } from '@/lib/cache-tags';
+import { nowInTz } from '@/lib/format';
 import { authedAction } from '@/lib/safe-action';
 import {
   createTransaction,
@@ -18,6 +20,7 @@ import {
   deleteTransactionSchema,
   deleteVirtualSchema,
   editVirtualSchema,
+  getAccountProjectionSchema,
   togglePaidSchema,
   updateRecurringSchema,
   updateTransactionSchema,
@@ -93,4 +96,27 @@ export const deleteVirtualAction = authedAction
     await deleteVirtualOccurrence(ctx.userId, parsedInput);
     revalidateAfterTransaction(ctx.userId);
     return { ok: true };
+  });
+
+/**
+ * Devuelve el saldo proyectado al cierre del mes (YYYY-MM) para una cuenta.
+ * Lazy: se invoca desde el form de Quick Add solo cuando el usuario elige
+ * una fecha en un mes futuro distinto al actual.
+ */
+export const getAccountProjectionAction = authedAction
+  .metadata({ actionName: 'getAccountProjection' })
+  .inputSchema(getAccountProjectionSchema)
+  .action(async ({ parsedInput, ctx }) => {
+    const { accountId, ym } = parsedInput;
+    const [yearStr, monthStr] = ym.split('-');
+    const year = Number.parseInt(yearStr ?? '', 10);
+    const month = Number.parseInt(monthStr ?? '', 10);
+    const { to } = monthRange(year, month);
+    const today = nowInTz(ctx.user.timezone).format('YYYY-MM-DD');
+    const result = await getProjectedBalanceMinor(ctx.userId, accountId, to, today);
+    return {
+      accountId,
+      ym,
+      projectedMinor: result.projectedMinor.toString(),
+    };
   });

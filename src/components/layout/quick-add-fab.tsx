@@ -4,16 +4,9 @@ import { listAccountsByUser } from '@/features/accounts/queries';
 import { listCategoriesByUser } from '@/features/categories/queries';
 import { listSavingsGoalsRaw } from '@/features/savings/queries';
 import { QuickAddDrawer } from '@/features/transactions/components/quick-add-drawer';
-import {
-  getProjectedBalanceMinor,
-  listAccountsWithBalances,
-  listDebtsWithState,
-  monthRange,
-} from '@/lib/accounting';
+import { listAccountsWithBalances, listDebtsWithState, monthRange } from '@/lib/accounting';
 import { nowInTz } from '@/lib/format';
 import type { UserId } from '@/types/ids';
-
-const FUTURE_MONTHS = 12;
 
 export async function QuickAddFAB() {
   const user = await getOrCreateUser();
@@ -22,7 +15,11 @@ export async function QuickAddFAB() {
   const today = now.format('YYYY-MM-DD');
   const { to: endOfMonth } = monthRange(now.year(), now.month() + 1);
 
-  // Saldo real hoy + proyectado fin de mes actual (para vista por defecto).
+  // Trae solo lo necesario para abrir el drawer: cuentas con saldo (real + proyectado
+  // del mes actual), categorías, deudas y metas. NADA de pre-cálculo de meses futuros:
+  // el form pide la proyección de meses futuros on-demand vía server action cuando el
+  // usuario selecciona una fecha distinta. Antes hacíamos accountsRaw × 12 meses
+  // = ~60 awaits seriales por navegación, lo que hacía la app muy lenta en mobile.
   const [accountsRaw, categories, accountsState, debtsState, savings] = await Promise.all([
     listAccountsByUser(userId),
     listCategoriesByUser(userId),
@@ -32,20 +29,6 @@ export async function QuickAddFAB() {
   ]);
 
   const stateById = new Map(accountsState.map((a) => [a.id, a]));
-
-  // Proyección por cuenta y por mes futuro (para que el form muestre el saldo
-  // proyectado al fin del mes de la fecha que el usuario seleccione).
-  // Mapa: `${accountId}:${YYYY-MM}` → projectedMinor en string.
-  const projectedByMonth: Record<string, string> = {};
-  for (const a of accountsRaw) {
-    for (let i = 0; i < FUTURE_MONTHS; i++) {
-      const target = now.add(i, 'month');
-      const { to } = monthRange(target.year(), target.month() + 1);
-      const ym = target.format('YYYY-MM');
-      const result = await getProjectedBalanceMinor(userId, a.id, to, today);
-      projectedByMonth[`${a.id}:${ym}`] = result.projectedMinor.toString();
-    }
-  }
 
   return (
     <QuickAddDrawer
@@ -61,7 +44,6 @@ export async function QuickAddFAB() {
           creditLimitMinor: a.creditLimitMinor ? String(a.creditLimitMinor) : null,
         };
       })}
-      projectedByMonth={projectedByMonth}
       categories={categories.map((c) => ({ id: c.id, name: c.name }))}
       debts={debtsState.map((d) => ({
         id: d.id,

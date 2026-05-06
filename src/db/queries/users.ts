@@ -1,13 +1,17 @@
 import 'server-only';
 import { currentUser } from '@clerk/nextjs/server';
 import { eq } from 'drizzle-orm';
+import { cache } from 'react';
 import { db } from '@/db/client';
 import { type UserRow, users } from '@/db/schema';
 import { DEFAULT_CURRENCY, DEFAULT_LOCALE, DEFAULT_TIMEZONE } from '@/lib/constants';
 import { UnauthorizedError } from '@/lib/errors';
 import type { UserId } from '@/types/ids';
 
-export async function getOrCreateUser(): Promise<UserRow> {
+// React.cache deduplica la llamada dentro de la misma request: layout, page y
+// subcomponentes server pueden invocar getOrCreateUser sin pagar el RTT a Clerk
+// y la query a Postgres más de una vez.
+export const getOrCreateUser = cache(async function getOrCreateUser(): Promise<UserRow> {
   const clerkUser = await currentUser();
   if (!clerkUser) throw new UnauthorizedError();
 
@@ -44,7 +48,7 @@ export async function getOrCreateUser(): Promise<UserRow> {
 
   if (!created) throw new Error('No se pudo crear el usuario');
   return created;
-}
+});
 
 export async function getUserId(): Promise<UserId> {
   const user = await getOrCreateUser();

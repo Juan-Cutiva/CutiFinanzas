@@ -33,7 +33,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { formatAmount } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
-import { createTransactionAction } from '../actions';
+import { createTransactionAction, getAccountProjectionAction } from '../actions';
 import {
   type CreateTransactionInput,
   createTransactionSchema,
@@ -225,9 +225,40 @@ export function TransactionForm({
 
   // Proyectado FIN DE MES de la fecha seleccionada (no del mes actual). Si el usuario
   // está registrando un movimiento en junio, mostramos el proyectado fin de junio.
+  //
+  // El mes actual ya viene en `selectedAccount.projectedMinor` (calculado por el
+  // padre). Para meses futuros distintos al actual, hacemos fetch lazy con
+  // getAccountProjectionAction y cacheamos en estado local — así no precalculamos
+  // 12 meses × N cuentas al cargar cada página.
   const selectedYM = watchedDate ? watchedDate.slice(0, 7) : '';
-  const projectedKey = selectedAccount && selectedYM ? `${selectedAccount.id}:${selectedYM}` : '';
-  const projectedFromMap = projectedByMonth?.[projectedKey];
+  const todayYM = today.slice(0, 7);
+  const [fetchedProjections, setFetchedProjections] = React.useState<Record<string, string>>(
+    () => projectedByMonth ?? {},
+  );
+  const projectionAction = useAction(getAccountProjectionAction);
+  const selectedAccountId = selectedAccount?.id;
+  const projectedKey = selectedAccountId && selectedYM ? `${selectedAccountId}:${selectedYM}` : '';
+  const projectedFromMap = projectedKey ? fetchedProjections[projectedKey] : undefined;
+
+  React.useEffect(() => {
+    if (!selectedAccountId || !selectedYM) return;
+    if (selectedYM <= todayYM) return; // mes actual/pasado: usa selectedAccount.projectedMinor
+    const key = `${selectedAccountId}:${selectedYM}`;
+    if (fetchedProjections[key] !== undefined) return; // ya cargada — early return previene re-fetch
+    let cancelled = false;
+    projectionAction
+      .executeAsync({ accountId: selectedAccountId, ym: selectedYM })
+      .then((res) => {
+        if (cancelled) return;
+        const minor = res?.data?.projectedMinor;
+        if (minor) setFetchedProjections((prev) => ({ ...prev, [key]: minor }));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAccountId, selectedYM, todayYM, fetchedProjections, projectionAction]);
+
   const accountProjectedMajor = projectedFromMap
     ? Number(BigInt(projectedFromMap)) / 100
     : selectedAccount?.projectedMinor
