@@ -240,13 +240,24 @@ export function TransactionForm({
   const projectedKey = selectedAccountId && selectedYM ? `${selectedAccountId}:${selectedYM}` : '';
   const projectedFromMap = projectedKey ? fetchedProjections[projectedKey] : undefined;
 
+  // Refs para leer el último valor sin que el efecto reaccione a sus cambios.
+  // `useAction` devuelve un objeto nuevo en cada render (estado interno de
+  // isPending/result), así que no puede ir en las deps sin causar un loop
+  // infinito de re-renders ↔ executeAsync que dispara React error #185.
+  // `fetchedProjections` cambia tras cada fetch exitoso — usamos ref para
+  // verificar la caché sin reaccionar a sí misma.
+  const projectionActionRef = React.useRef(projectionAction);
+  projectionActionRef.current = projectionAction;
+  const fetchedProjectionsRef = React.useRef(fetchedProjections);
+  fetchedProjectionsRef.current = fetchedProjections;
+
   React.useEffect(() => {
     if (!selectedAccountId || !selectedYM) return;
     if (selectedYM <= todayYM) return; // mes actual/pasado: usa selectedAccount.projectedMinor
     const key = `${selectedAccountId}:${selectedYM}`;
-    if (fetchedProjections[key] !== undefined) return; // ya cargada — early return previene re-fetch
+    if (fetchedProjectionsRef.current[key] !== undefined) return; // ya cargada
     let cancelled = false;
-    projectionAction
+    projectionActionRef.current
       .executeAsync({ accountId: selectedAccountId, ym: selectedYM })
       .then((res) => {
         if (cancelled) return;
@@ -257,7 +268,7 @@ export function TransactionForm({
     return () => {
       cancelled = true;
     };
-  }, [selectedAccountId, selectedYM, todayYM, fetchedProjections, projectionAction]);
+  }, [selectedAccountId, selectedYM, todayYM]);
 
   const accountProjectedMajor = projectedFromMap
     ? Number(BigInt(projectedFromMap)) / 100
