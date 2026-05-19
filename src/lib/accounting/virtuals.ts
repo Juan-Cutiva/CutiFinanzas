@@ -29,7 +29,8 @@ export interface RecurringRuleForVirtuals {
    * Se actualiza por el cron (al insertar una real) y por createTransaction.
    */
   nextOccurrenceDate: string;
-  accountId: string;
+  /** Nullable: `loan_charge` puede no involucrar ninguna cuenta asset. */
+  accountId: string | null;
   counterAccountId: string | null;
   categoryId: string | null;
   debtId: string | null;
@@ -44,7 +45,8 @@ export interface VirtualOccurrence {
   amountMinor: bigint;
   currency: string;
   transactionDate: string;
-  accountId: string;
+  /** Nullable: `loan_charge` puede no involucrar ninguna cuenta asset. */
+  accountId: string | null;
   counterAccountId: string | null;
   categoryId: string | null;
   debtId: string | null;

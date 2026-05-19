@@ -8,6 +8,7 @@ import {
   Eye,
   Pencil,
   PiggyBank,
+  Receipt,
   Trash2,
   Wallet,
 } from 'lucide-react';
@@ -56,7 +57,8 @@ export interface TxListItem {
   transactionDate: string;
   description: string | null;
   notes: string | null;
-  accountId: string;
+  /** Nullable: `loan_charge` puede no involucrar ninguna cuenta asset. */
+  accountId: string | null;
   counterAccountId: string | null;
   categoryId: string | null;
   debtId: string | null;
@@ -92,6 +94,7 @@ function iconForKind(kind: TransactionKind) {
   if (kind === 'cc_charge') return CreditCard;
   if (kind === 'cc_payment') return ArrowLeftRight;
   if (kind === 'loan_payment') return ArrowLeftRight;
+  if (kind === 'loan_charge') return Receipt;
   if (kind === 'savings_contribution') return PiggyBank;
   if (kind === 'refund') return ArrowUpRight;
   if (isIncomeOfMonth(kind)) return ArrowUpRight;

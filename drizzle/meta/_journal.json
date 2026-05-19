@@ -71,6 +71,13 @@
       "when": 1777989989400,
       "tag": "0009_uneven_squadron_supreme",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1779667200000,
+      "tag": "0010_loan_charge",
+      "breakpoints": true
     }
   ]
 }

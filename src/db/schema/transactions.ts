@@ -31,6 +31,7 @@ import { users } from './users';
  * | cc_charge             | credit_card (+)     | —                       | sí         | —      | —             |
  * | cc_payment            | asset origen (-)    | credit_card destino (-) | —          | —      | —             |
  * | loan_payment          | asset origen (-)    | —                       | —          | sí     | —             |
+ * | loan_charge           | opcional: asset (+) | —                       | —          | sí     | —             |
  * | savings_contribution  | asset origen (-)    | —                       | —          | —      | sí            |
  *
  * - transactionDate (DATE) está en la timezone del usuario; sin TZ en BD.
@@ -44,9 +45,11 @@ export const transactions = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    accountId: text('account_id')
-      .notNull()
-      .references(() => accounts.id, { onDelete: 'restrict' }),
+    // Nullable porque `loan_charge` puede no involucrar ninguna cuenta asset
+    // (p.ej. intereses capitalizados, multas: la deuda crece sin que salga
+    // dinero de ninguna cuenta del usuario). Para todos los demás kinds el
+    // accountId sigue siendo obligatorio — la validación se hace en zod.
+    accountId: text('account_id').references(() => accounts.id, { onDelete: 'restrict' }),
     counterAccountId: text('counter_account_id').references(() => accounts.id, {
       onDelete: 'restrict',
     }),

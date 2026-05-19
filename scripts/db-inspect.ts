@@ -50,7 +50,7 @@ async function main() {
     .where(eq(schema.transactions.userId, userId));
   txs.sort((a, b) => a.transactionDate.localeCompare(b.transactionDate));
   for (const t of txs) {
-    const acc = accountById.get(t.accountId);
+    const acc = t.accountId ? accountById.get(t.accountId) : null;
     const counter = t.counterAccountId ? accountById.get(t.counterAccountId) : null;
     out(
       `${t.transactionDate} | ${t.kind.padEnd(20)} | ${String(t.amountMinor).padStart(12)} | ${acc?.name ?? '?'} → ${counter?.name ?? '—'} | ${t.description ?? ''}${t.recurringRuleId ? ` [rule=${t.recurringRuleId.slice(0, 8)}]` : ''}`,
@@ -64,7 +64,7 @@ async function main() {
     .from(schema.recurringRules)
     .where(eq(schema.recurringRules.userId, userId));
   for (const r of rules) {
-    const acc = accountById.get(r.accountId);
+    const acc = r.accountId ? accountById.get(r.accountId) : null;
     out(
       `${r.id.slice(0, 8)} | ${r.kind.padEnd(20)} | ${String(r.amountMinor).padStart(12)} | acc=${acc?.name ?? '?'} | freq=${r.frequency} | start=${r.startDate} end=${r.endDate ?? '∞'} next=${r.nextOccurrenceDate} | active=${r.isActive ? 'Y' : 'N'} | name=${r.name}`,
     );

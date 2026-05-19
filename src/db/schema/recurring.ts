@@ -38,9 +38,10 @@ export const recurringRules = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    accountId: text('account_id')
-      .notNull()
-      .references(() => accounts.id, { onDelete: 'cascade' }),
+    // Nullable porque `loan_charge` recurrente (p.ej. interés mensual
+    // capitalizado) puede no involucrar ninguna cuenta asset. Para los demás
+    // kinds el form de zod sigue exigiendo accountId.
+    accountId: text('account_id').references(() => accounts.id, { onDelete: 'cascade' }),
     counterAccountId: text('counter_account_id').references(() => accounts.id, {
       onDelete: 'set null',
     }),

@@ -318,6 +318,7 @@ function emptyByKind(): Record<TransactionKind, bigint> {
     cc_charge: 0n,
     cc_payment: 0n,
     loan_payment: 0n,
+    loan_charge: 0n,
     savings_contribution: 0n,
   };
 }

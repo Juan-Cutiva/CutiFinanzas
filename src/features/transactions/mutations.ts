@@ -30,7 +30,7 @@ export async function createTransaction(userId: UserId, input: CreateTransaction
   const amountMinor = amountMajorToMinor(input.amount, currency);
   const baseValues = {
     userId,
-    accountId: input.accountId,
+    accountId: input.accountId ?? null,
     counterAccountId: input.counterAccountId ?? null,
     categoryId: input.categoryId ?? null,
     debtId: input.debtId ?? null,

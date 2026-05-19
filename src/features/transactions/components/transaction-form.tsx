@@ -89,6 +89,7 @@ const KIND_LABELS_FORM: Record<TransactionKind, string> = {
   cc_charge: 'Compra con tarjeta de crédito',
   cc_payment: 'Pago a tarjeta de crédito',
   loan_payment: 'Cuota de préstamo',
+  loan_charge: 'Cargo a préstamo (interés, multa, desembolso)',
   savings_contribution: 'Aporte a meta de ahorro',
 };
 
@@ -114,17 +115,28 @@ export function TransactionForm({
     [accounts],
   );
 
+  // Si el form se abre directamente en loan_charge desde /deudas/[id] con un solo
+  // préstamo en la lista, preselecciónalo. accountId va null por defecto en este
+  // caso (la cuenta es opcional para loan_charge).
+  const initialDebtId =
+    defaultKind === 'loan_charge' && debts.length > 0 ? (debts[0]?.id ?? null) : null;
+  const initialAccountId = defaultKind === 'loan_charge' ? null : (accounts[0]?.id ?? '');
+  const initialCurrency =
+    defaultKind === 'loan_charge'
+      ? (debts[0]?.currency ?? defaultCurrency)
+      : (accounts[0]?.currency ?? defaultCurrency);
+
   const form = useForm<z.input<typeof createTransactionSchema>, unknown, CreateTransactionInput>({
     resolver: zodResolver(createTransactionSchema),
     defaultValues: {
       kind: defaultKind,
-      accountId: accounts[0]?.id ?? '',
+      accountId: initialAccountId,
       counterAccountId: null,
       categoryId: null,
-      debtId: null,
+      debtId: initialDebtId,
       savingsGoalId: null,
       amount: 0,
-      currency: accounts[0]?.currency ?? defaultCurrency,
+      currency: initialCurrency,
       transactionDate: today,
       description: '',
       notes: '',
@@ -154,11 +166,14 @@ export function TransactionForm({
   const isCcCharge = watchedKind === 'cc_charge';
   const isCcPayment = watchedKind === 'cc_payment';
   const isLoanPayment = watchedKind === 'loan_payment';
+  const isLoanCharge = watchedKind === 'loan_charge';
   const isSavingsContribution = watchedKind === 'savings_contribution';
 
   const needsCategory = isExpense || isIncome || isRefund || isCcCharge;
   // cc_payment y loan_payment también pueden tener categoría (opcional, para clasificar el gasto).
   const offersCategory = needsCategory || isCcPayment || isLoanPayment;
+  // loan_charge: la cuenta es OPCIONAL (puede ser solo deuda, sin asset).
+  const accountIsOptional = isLoanCharge;
   const supportsRecurring = !isRefund && !isTransfer; // refund y transfer son siempre puntuales
 
   // Filtrar cuentas según el kind
@@ -166,12 +181,14 @@ export function TransactionForm({
     if (isCcCharge) return ccAccounts;
     if (isCcPayment) return assetAccounts;
     if (isLoanPayment || isSavingsContribution || isTransfer) return assetAccounts;
+    if (isLoanCharge) return assetAccounts; // si el usuario marca destino, debe ser asset
     if (isExpense || isIncome || isRefund) return assetAccounts;
     return accounts;
   }, [
     isCcCharge,
     isCcPayment,
     isLoanPayment,
+    isLoanCharge,
     isSavingsContribution,
     isTransfer,
     isExpense,
@@ -193,15 +210,22 @@ export function TransactionForm({
   React.useEffect(() => {
     // Reset campos según kind
     if (!offersCategory) form.setValue('categoryId', null);
-    if (!isLoanPayment) form.setValue('debtId', null);
+    if (!isLoanPayment && !isLoanCharge) form.setValue('debtId', null);
     if (!isSavingsContribution) form.setValue('savingsGoalId', null);
     if (!isTransfer && !isCcPayment) form.setValue('counterAccountId', null);
 
-    // Ajusta cuenta a las válidas para este kind
-    const valid = accountsForOrigin.find((a) => a.id === form.getValues('accountId'));
-    if (!valid && accountsForOrigin[0]) {
-      form.setValue('accountId', accountsForOrigin[0].id);
-      form.setValue('currency', accountsForOrigin[0].currency);
+    // Para loan_charge: la cuenta es opcional. Resetea a null si el kind cambia
+    // a loan_charge para no arrastrar una cuenta del kind anterior.
+    if (isLoanCharge) {
+      form.setValue('accountId', null);
+      form.setValue('currency', defaultCurrency);
+    } else {
+      // Ajusta cuenta a las válidas para este kind
+      const valid = accountsForOrigin.find((a) => a.id === form.getValues('accountId'));
+      if (!valid && accountsForOrigin[0]) {
+        form.setValue('accountId', accountsForOrigin[0].id);
+        form.setValue('currency', accountsForOrigin[0].currency);
+      }
     }
 
     // Counter account
@@ -297,6 +321,7 @@ export function TransactionForm({
     !isCcCharge &&
     !isIncome &&
     !isRefund &&
+    !isLoanCharge &&
     !!selectedAccount &&
     Number(watchedAmount ?? 0) > Math.max(accountBalanceMajor, accountProjectedMajor);
   const overCcLimit = isCcCharge && !!selectedAccount && Number(watchedAmount ?? 0) > ccAvailable;
@@ -373,6 +398,7 @@ export function TransactionForm({
     'cc_charge',
     'cc_payment',
     'loan_payment',
+    'loan_charge',
     'savings_contribution',
   ];
   const visibleKinds = allKinds.filter((k) => {
@@ -380,6 +406,7 @@ export function TransactionForm({
     if (k === 'cc_payment' && assetAccounts.length === 0) return false;
     if (k === 'transfer' && assetAccounts.length < 2) return false;
     if (k === 'loan_payment' && debts.length === 0) return false;
+    if (k === 'loan_charge' && debts.length === 0) return false;
     if (k === 'savings_contribution' && savingsGoals.length === 0) return false;
     return true;
   });
@@ -493,24 +520,35 @@ export function TransactionForm({
               <FormLabel>
                 {isCcCharge
                   ? 'Tarjeta de crédito'
-                  : isCcPayment || isTransfer || isLoanPayment || isSavingsContribution
-                    ? 'Desde la cuenta'
-                    : 'Cuenta'}
+                  : isLoanCharge
+                    ? '¿A qué cuenta entró el dinero? (opcional)'
+                    : isCcPayment || isTransfer || isLoanPayment || isSavingsContribution
+                      ? 'Desde la cuenta'
+                      : 'Cuenta'}
               </FormLabel>
               <Select
-                value={field.value}
+                value={field.value ?? ''}
                 onValueChange={(v) => {
-                  field.onChange(v);
-                  const acc = accounts.find((a) => a.id === v);
-                  if (acc) form.setValue('currency', acc.currency);
+                  // En loan_charge la opción "ninguna" devuelve null (solo deuda).
+                  const next = v === '__none__' ? null : v;
+                  field.onChange(next);
+                  if (next) {
+                    const acc = accounts.find((a) => a.id === next);
+                    if (acc) form.setValue('currency', acc.currency);
+                  }
                 }}
               >
                 <FormControl>
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue
+                      placeholder={accountIsOptional ? 'Ninguna (solo deuda)' : undefined}
+                    />
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
+                  {accountIsOptional ? (
+                    <SelectItem value="__none__">— Ninguna (solo deuda) —</SelectItem>
+                  ) : null}
                   {accountsForOrigin.map((a) => (
                     <SelectItem key={a.id} value={a.id}>
                       {a.name} · {a.currency}
@@ -670,15 +708,26 @@ export function TransactionForm({
           />
         ) : null}
 
-        {/* Préstamo */}
-        {isLoanPayment ? (
+        {/* Préstamo (loan_payment y loan_charge) */}
+        {isLoanPayment || isLoanCharge ? (
           <FormField
             control={form.control}
             name="debtId"
             render={({ field }) => (
               <FormItem>
                 <FormLabel>Préstamo</FormLabel>
-                <Select value={field.value ?? ''} onValueChange={field.onChange}>
+                <Select
+                  value={field.value ?? ''}
+                  onValueChange={(v) => {
+                    field.onChange(v);
+                    // Para loan_charge sin cuenta, hereda la moneda del préstamo
+                    // (no hay asset que la imponga).
+                    if (isLoanCharge && !form.getValues('accountId')) {
+                      const debt = debts.find((d) => d.id === v);
+                      if (debt) form.setValue('currency', debt.currency);
+                    }
+                  }}
+                >
                   <FormControl>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecciona el préstamo" />
@@ -694,10 +743,15 @@ export function TransactionForm({
                 </Select>
                 {selectedDebt ? (
                   <FormDescription>
-                    Saldo restante:{' '}
+                    {isLoanCharge ? 'Saldo actual: ' : 'Saldo restante: '}
                     <span className="font-mono tabular-nums font-semibold text-amount-negative">
                       {formatAmount(debtBalanceMajor, selectedDebt.currency as CurrencyCode)}
                     </span>
+                    {isLoanCharge ? (
+                      <span className="block text-xs text-muted-foreground">
+                        Este cargo aumentará el saldo del préstamo.
+                      </span>
+                    ) : null}
                   </FormDescription>
                 ) : null}
                 <FormMessage />

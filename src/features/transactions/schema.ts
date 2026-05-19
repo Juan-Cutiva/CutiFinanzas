@@ -48,7 +48,9 @@ export type GetAccountProjectionInput = z.infer<typeof getAccountProjectionSchem
 export const createTransactionSchema = z
   .object({
     kind: allKindEnum,
-    accountId: z.string().min(1, 'Cuenta requerida'),
+    // Opcional a nivel base; el refinement de abajo lo exige para todos los kinds
+    // salvo `loan_charge`, que puede ser solo-deuda (intereses/multas sin asset).
+    accountId: z.string().nullable().optional(),
     counterAccountId: z.string().nullable().optional(),
     categoryId: z.string().nullable().optional(),
     debtId: z.string().nullable().optional(),
@@ -70,6 +72,14 @@ export const createTransactionSchema = z
       .optional(),
   })
   .superRefine((data, ctx) => {
+    // accountId es obligatorio para todos los kinds excepto loan_charge.
+    if (data.kind !== 'loan_charge' && !data.accountId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Cuenta requerida',
+        path: ['accountId'],
+      });
+    }
     if (data.kind === 'transfer' && !data.counterAccountId) {
       ctx.addIssue({
         code: 'custom',
@@ -99,6 +109,13 @@ export const createTransactionSchema = z
       });
     }
     if (data.kind === 'loan_payment' && !data.debtId) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Selecciona el préstamo',
+        path: ['debtId'],
+      });
+    }
+    if (data.kind === 'loan_charge' && !data.debtId) {
       ctx.addIssue({
         code: 'custom',
         message: 'Selecciona el préstamo',

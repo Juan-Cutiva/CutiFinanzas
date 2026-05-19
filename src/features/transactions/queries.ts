@@ -78,17 +78,24 @@ export async function listCreditCardChargesByMonth(
   });
 }
 
-export async function listPaymentsForDebt(userId: UserId, debtId: string) {
+/**
+ * Lista todos los movimientos asociados a una deuda — pagos (loan_payment) y
+ * cargos extra (loan_charge) — para el historial en la página de detalle.
+ */
+export async function listMovementsForDebt(userId: UserId, debtId: string) {
   return db.query.transactions.findMany({
     where: and(
       eq(transactions.userId, userId),
-      eq(transactions.kind, 'loan_payment'),
+      inArray(transactions.kind, ['loan_payment', 'loan_charge']),
       eq(transactions.debtId, debtId),
     ),
     with: { account: true, recurringRule: true },
     orderBy: [desc(transactions.transactionDate), desc(transactions.createdAt)],
   });
 }
+
+/** @deprecated Use listMovementsForDebt — incluye cargos extra además de pagos. */
+export const listPaymentsForDebt = listMovementsForDebt;
 
 export async function listTransactionsByAccount(
   userId: UserId,

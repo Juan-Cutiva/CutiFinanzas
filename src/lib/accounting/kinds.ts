@@ -11,6 +11,7 @@ export type TransactionKind =
   | 'cc_charge'
   | 'cc_payment'
   | 'loan_payment'
+  | 'loan_charge'
   | 'savings_contribution';
 
 /**
@@ -24,6 +25,7 @@ export type PrimaryKind =
   | 'cc_charge'
   | 'cc_payment'
   | 'loan_payment'
+  | 'loan_charge'
   | 'savings_contribution';
 
 export const ALL_KINDS: TransactionKind[] = [
@@ -34,6 +36,7 @@ export const ALL_KINDS: TransactionKind[] = [
   'cc_charge',
   'cc_payment',
   'loan_payment',
+  'loan_charge',
   'savings_contribution',
 ];
 
@@ -62,10 +65,18 @@ export const EXPENSE_KINDS: ReadonlyArray<TransactionKind> = [
 export const INCOME_KINDS: ReadonlyArray<TransactionKind> = ['income', 'refund'];
 
 /**
- * Movimientos verdaderamente internos entre cuentas propias del usuario —
- * neutros al patrimonio Y al gasto operativo.
+ * Movimientos que NO cuentan como gasto ni ingreso del mes en cash-basis.
+ * - transfer: solo mueve dinero entre cuentas propias.
+ * - cc_charge: compra con tarjeta — no es gasto hasta que se paga el extracto.
+ * - loan_charge: aumento de la deuda (intereses, multas, desembolso adicional).
+ *   No representa un flujo de gasto del mes; solo afecta el saldo de la deuda
+ *   y, opcionalmente, suma a una cuenta asset si hubo desembolso.
  */
-export const INTERNAL_KINDS: ReadonlyArray<TransactionKind> = ['transfer', 'cc_charge'];
+export const INTERNAL_KINDS: ReadonlyArray<TransactionKind> = [
+  'transfer',
+  'cc_charge',
+  'loan_charge',
+];
 
 export function isExpenseOfMonth(kind: TransactionKind): boolean {
   return (EXPENSE_KINDS as readonly TransactionKind[]).includes(kind);
@@ -90,5 +101,6 @@ export const KIND_LABELS: Record<TransactionKind, string> = {
   cc_charge: 'Compra con tarjeta',
   cc_payment: 'Pago de tarjeta',
   loan_payment: 'Cuota de préstamo',
+  loan_charge: 'Cargo a préstamo',
   savings_contribution: 'Aporte a ahorro',
 };

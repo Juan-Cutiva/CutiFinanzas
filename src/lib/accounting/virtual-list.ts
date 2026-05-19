@@ -23,7 +23,8 @@ export interface VirtualTxItem {
   transactionDate: string;
   description: string | null;
   notes: string | null;
-  accountId: string;
+  /** Nullable: `loan_charge` puede no involucrar ninguna cuenta asset. */
+  accountId: string | null;
   counterAccountId: string | null;
   categoryId: string | null;
   debtId: string | null;

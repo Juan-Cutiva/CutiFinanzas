@@ -15,7 +15,8 @@ export function isAsset(type: AccountKind): boolean {
 export interface TxImpactInput {
   kind: TransactionKind;
   amountMinor: bigint;
-  accountId: string;
+  /** Nullable: `loan_charge` puede no involucrar ninguna cuenta asset. */
+  accountId: string | null;
   counterAccountId: string | null;
 }
 
@@ -29,6 +30,7 @@ export interface TxImpactInput {
  *     - expense, transfer, cc_payment, loan_payment, savings_contribution → -amount
  *     - income, refund                                                    → +amount
  *     - cc_charge (la account es la CC)                                   → +amount (deuda crece)
+ *     - loan_charge (asset destino del desembolso, opcional)              → +amount
  *
  *   counterAccountId = destino (sólo para transfer, cc_payment)
  *     - transfer  (counter = destino asset)                               → +amount
@@ -46,6 +48,7 @@ export function deltaFor(tx: TxImpactInput, accountId: string): bigint {
       case 'income':
       case 'refund':
       case 'cc_charge':
+      case 'loan_charge':
         return tx.amountMinor;
     }
   }

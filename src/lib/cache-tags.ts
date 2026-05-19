@@ -38,17 +38,25 @@ export function revalidateAfterTransaction(userId: UserId) {
   revalidatePath('/transacciones');
   revalidatePath('/dashboard');
   revalidatePath('/ingresos');
+  revalidatePath('/gastos');
   revalidatePath('/cuentas');
+  // Rutas dinámicas: el segundo arg 'page' invalida TODAS las instancias del
+  // segmento — sin esto, /cuentas/[id] o /deudas/[id] quedan con el saldo viejo
+  // tras crear una transacción desde ese mismo detalle.
+  revalidatePath('/cuentas/[id]', 'page');
   revalidatePath('/presupuestos');
   revalidatePath('/deudas');
+  revalidatePath('/deudas/[id]', 'page');
   revalidatePath('/ahorros');
   revalidatePath('/reportes');
+  revalidatePath('/reportes/anual');
 }
 
 export function revalidateAfterAccount(userId: UserId) {
   revalidateTag(cacheTags.accounts(userId), PROFILE);
   revalidateTag(cacheTags.transactions(userId), PROFILE);
   revalidatePath('/cuentas');
+  revalidatePath('/cuentas/[id]', 'page');
   revalidatePath('/dashboard');
 }
 
@@ -67,6 +75,7 @@ export function revalidateAfterBudget(userId: UserId) {
 export function revalidateAfterDebt(userId: UserId) {
   revalidateTag(cacheTags.debts(userId), PROFILE);
   revalidatePath('/deudas');
+  revalidatePath('/deudas/[id]', 'page');
   revalidatePath('/dashboard');
 }
 

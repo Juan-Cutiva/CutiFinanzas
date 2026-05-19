@@ -61,6 +61,7 @@ async function sumAccountDeltasAsOf(
             WHEN 'income'               THEN  ${transactions.amountMinor}
             WHEN 'refund'               THEN  ${transactions.amountMinor}
             WHEN 'cc_charge'            THEN  ${transactions.amountMinor}
+            WHEN 'loan_charge'          THEN  ${transactions.amountMinor}
             ELSE 0
           END
         ), 0)`,
@@ -213,7 +214,12 @@ function ruleToVirtuals(r: typeof recurringRules.$inferSelect): RecurringRuleFor
 }
 
 function deltaForAccount(
-  v: { kind: string; amountMinor: bigint; accountId: string; counterAccountId: string | null },
+  v: {
+    kind: string;
+    amountMinor: bigint;
+    accountId: string | null;
+    counterAccountId: string | null;
+  },
   accountId: string,
 ): bigint {
   if (v.accountId === accountId) {
@@ -227,6 +233,7 @@ function deltaForAccount(
       case 'income':
       case 'refund':
       case 'cc_charge':
+      case 'loan_charge':
         return v.amountMinor;
     }
   }

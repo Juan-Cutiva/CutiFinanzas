@@ -204,7 +204,7 @@ export async function GET(_req: NextRequest) {
       rrSheet.addRow({
         name: r.name,
         kind: KIND_LABELS[r.kind as TransactionKind] ?? r.kind,
-        account: accountsById.get(r.accountId)?.name ?? '',
+        account: r.accountId ? (accountsById.get(r.accountId)?.name ?? '') : '',
         category: r.categoryId ? (categoriesById.get(r.categoryId)?.name ?? '') : '',
         amount: Number(r.amountMinor) / 100,
         currency: r.currency,

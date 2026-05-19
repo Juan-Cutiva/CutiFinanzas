@@ -26,43 +26,57 @@ export interface DebtState {
   paidInstallments: number;
 }
 
-interface DebtPaymentTotals {
-  sum: bigint;
-  count: number;
+interface DebtMovementTotals {
+  /** Suma de pagos (loan_payment) que reducen el saldo. */
+  paymentsSum: bigint;
+  /** Cuántas cuotas se han pagado (count de loan_payment). */
+  paymentsCount: number;
+  /** Suma de cargos extra (loan_charge) que aumentan el saldo. */
+  chargesSum: bigint;
 }
 
 /**
- * Suma agregada de loan_payments por debt hasta `asOfDate`. Devuelve un Map.
+ * Suma agregada de movimientos por deuda hasta `asOfDate`. Devuelve un Map.
+ * Separa pagos y cargos para poder mostrar conteos correctamente; el saldo
+ * neto se calcula afuera (principal − initialPaid − payments + charges).
  */
-async function sumLoanPaymentsByDebt(
+async function sumDebtMovementsByDebt(
   userId: UserId,
   debtIds: string[],
   asOfDate: string,
-): Promise<Map<string, DebtPaymentTotals>> {
+): Promise<Map<string, DebtMovementTotals>> {
   if (debtIds.length === 0) return new Map();
   const rows = await db
     .select({
       debtId: transactions.debtId,
-      sum: sql<string | null>`COALESCE(SUM(${transactions.amountMinor}), 0)`,
-      count: sql<string | null>`COUNT(*)`,
+      paymentsSum: sql<
+        string | null
+      >`COALESCE(SUM(${transactions.amountMinor}) FILTER (WHERE ${transactions.kind} = 'loan_payment'), 0)`,
+      paymentsCount: sql<
+        string | null
+      >`COUNT(*) FILTER (WHERE ${transactions.kind} = 'loan_payment')`,
+      chargesSum: sql<
+        string | null
+      >`COALESCE(SUM(${transactions.amountMinor}) FILTER (WHERE ${transactions.kind} = 'loan_charge'), 0)`,
     })
     .from(transactions)
     .where(
       and(
         eq(transactions.userId, userId),
         inArray(transactions.debtId, debtIds),
-        eq(transactions.kind, 'loan_payment'),
+        inArray(transactions.kind, ['loan_payment', 'loan_charge']),
         lte(transactions.transactionDate, asOfDate),
       ),
     )
     .groupBy(transactions.debtId);
 
-  const out = new Map<string, DebtPaymentTotals>();
+  const out = new Map<string, DebtMovementTotals>();
   for (const r of rows) {
     if (r.debtId) {
       out.set(r.debtId, {
-        sum: BigInt(r.sum ?? 0),
-        count: Number(r.count ?? 0),
+        paymentsSum: BigInt(r.paymentsSum ?? 0),
+        paymentsCount: Number(r.paymentsCount ?? 0),
+        chargesSum: BigInt(r.chargesSum ?? 0),
       });
     }
   }
@@ -70,8 +84,9 @@ async function sumLoanPaymentsByDebt(
 }
 
 /**
- * Set de (ruleId, date) ya materializadas como loan_payment en (today, asOfDate]
- * para los debts indicados. Para evitar contar virtuales que ya tienen real.
+ * Set de (ruleId, date) ya materializadas como loan_payment o loan_charge en
+ * (today, asOfDate] para los debts indicados. Sirve para no contar virtuales
+ * cuando ya existen como reales (edit puntual o cron).
  */
 async function materializedLoanKeys(
   userId: UserId,
@@ -87,7 +102,7 @@ async function materializedLoanKeys(
       and(
         eq(transactions.userId, userId),
         inArray(transactions.debtId, debtIds),
-        eq(transactions.kind, 'loan_payment'),
+        inArray(transactions.kind, ['loan_payment', 'loan_charge']),
         gt(transactions.transactionDate, exclusiveFrom),
         lte(transactions.transactionDate, inclusiveTo),
         isNotNull(transactions.recurringRuleId),
@@ -138,11 +153,11 @@ export async function listDebtsWithState(
   const isFuture = asOfDate > today;
   const isPast = asOfDate < today;
 
-  const [paidByDebtToday, paidByDebtAsOf, rules, matSet] = await Promise.all([
-    sumLoanPaymentsByDebt(userId, debtIds, today),
+  const [movsToday, movsAsOf, rules, matSet] = await Promise.all([
+    sumDebtMovementsByDebt(userId, debtIds, today),
     isFuture || isPast
-      ? sumLoanPaymentsByDebt(userId, debtIds, asOfDate)
-      : Promise.resolve(new Map<string, DebtPaymentTotals>()),
+      ? sumDebtMovementsByDebt(userId, debtIds, asOfDate)
+      : Promise.resolve(new Map<string, DebtMovementTotals>()),
     isFuture
       ? db
           .select()
@@ -151,7 +166,7 @@ export async function listDebtsWithState(
             and(
               eq(recurringRules.userId, userId),
               eq(recurringRules.isActive, true),
-              eq(recurringRules.kind, 'loan_payment'),
+              inArray(recurringRules.kind, ['loan_payment', 'loan_charge']),
               inArray(recurringRules.debtId, debtIds),
             ),
           )
@@ -161,19 +176,21 @@ export async function listDebtsWithState(
       : Promise.resolve(new Set<string>()),
   ]);
 
-  // Pre-genera ocurrencias virtuales por regla. Luego mapeamos por debtId.
-  const projectedPaymentsByDebt = new Map<string, bigint>();
+  // Pre-genera ocurrencias virtuales por regla. Mapea pagos y cargos por debtId.
+  // Los pagos REDUCEN la deuda proyectada; los cargos la AUMENTAN.
+  const projectedDeltaByDebt = new Map<string, bigint>(); // delta = charges - payments
   if (isFuture) {
     for (const r of rules) {
       if (!r.debtId) continue;
       const ruleVirt = toVirtualRule(r);
       const virtuals = generateVirtualOccurrences(ruleVirt, asOfDate);
-      let acc = projectedPaymentsByDebt.get(r.debtId) ?? 0n;
+      let acc = projectedDeltaByDebt.get(r.debtId) ?? 0n;
       for (const v of virtuals) {
         if (matSet.has(`${r.id}:${v.transactionDate}`)) continue;
-        acc += v.amountMinor;
+        if (r.kind === 'loan_payment') acc -= v.amountMinor;
+        else if (r.kind === 'loan_charge') acc += v.amountMinor;
       }
-      projectedPaymentsByDebt.set(r.debtId, acc);
+      projectedDeltaByDebt.set(r.debtId, acc);
     }
   }
 
@@ -181,20 +198,34 @@ export async function listDebtsWithState(
     const principal = BigInt(debt.principalMinor as unknown as string | number | bigint);
     const initialPaid = BigInt(debt.initialPaidMinor as unknown as string | number | bigint);
 
-    const paidToday = paidByDebtToday.get(debt.id) ?? { sum: 0n, count: 0 };
-    const totalPaidMinor = paidToday.sum;
-    const paidInstallments = paidToday.count;
-    const realBalanceMinor = principal - initialPaid - totalPaidMinor;
+    const movToday = movsToday.get(debt.id) ?? {
+      paymentsSum: 0n,
+      paymentsCount: 0,
+      chargesSum: 0n,
+    };
+    const totalPaidMinor = movToday.paymentsSum;
+    const paidInstallments = movToday.paymentsCount;
+    // Saldo real = principal − initialPaid − pagos + cargos extra.
+    const realBalanceMinor = principal - initialPaid - totalPaidMinor + movToday.chargesSum;
 
     let projectedBalanceMinor = realBalanceMinor;
     if (isFuture) {
-      const paidAsOf = paidByDebtAsOf.get(debt.id)?.sum ?? 0n;
-      const projected = projectedPaymentsByDebt.get(debt.id) ?? 0n;
-      projectedBalanceMinor = principal - initialPaid - paidAsOf - projected;
+      const movAsOf = movsAsOf.get(debt.id) ?? {
+        paymentsSum: 0n,
+        paymentsCount: 0,
+        chargesSum: 0n,
+      };
+      const virtualDelta = projectedDeltaByDebt.get(debt.id) ?? 0n;
+      projectedBalanceMinor =
+        principal - initialPaid - movAsOf.paymentsSum + movAsOf.chargesSum + virtualDelta;
       if (projectedBalanceMinor < 0n) projectedBalanceMinor = 0n;
     } else if (isPast) {
-      const paidAsOf = paidByDebtAsOf.get(debt.id)?.sum ?? 0n;
-      projectedBalanceMinor = principal - initialPaid - paidAsOf;
+      const movAsOf = movsAsOf.get(debt.id) ?? {
+        paymentsSum: 0n,
+        paymentsCount: 0,
+        chargesSum: 0n,
+      };
+      projectedBalanceMinor = principal - initialPaid - movAsOf.paymentsSum + movAsOf.chargesSum;
     }
 
     return {
