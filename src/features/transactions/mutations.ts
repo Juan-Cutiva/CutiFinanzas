@@ -4,6 +4,10 @@ import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { recurringRules, transactions } from '@/db/schema';
 import type { TransactionKind } from '@/lib/accounting';
+import {
+  generateVirtualOccurrences,
+  type RecurringRuleForVirtuals,
+} from '@/lib/accounting/virtuals';
 import { NotFoundError, ValidationError } from '@/lib/errors';
 import type { CurrencyCode } from '@/lib/money';
 import type { UserId } from '@/types/ids';
@@ -161,9 +165,42 @@ export async function updateRecurring(userId: UserId, input: UpdateRecurringInpu
   const dayBefore = dayjs(cutoffDate).subtract(1, 'day').format('YYYY-MM-DD');
 
   // Sin db.transaction: neon-http no soporta sesiones. Operamos secuencial.
-  // Orden: borrar ocurrencias futuras de la regla vieja → crear nueva regla
+  // Orden: materializar virtuales pendientes de la regla vieja en (nextOcc..dayBefore]
+  // → borrar ocurrencias futuras de la regla vieja → crear nueva regla
   // → cerrar regla vieja → materializar primera ocurrencia de la nueva.
   // Si algo falla a media, la regla vieja sigue activa (estado consistente).
+
+  // Edge case: el cron está atrasado (nextOccurrenceDate < cutoffDate). Las
+  // ocurrencias entre nextOcc y dayBefore quedarían perdidas al cerrar la regla.
+  // Materializamos esas pendientes con los valores VIEJOS antes de cerrar.
+  if (oldRule.nextOccurrenceDate <= dayBefore) {
+    const ruleVirt = ruleRowToVirtual(oldRule);
+    const pending = generateVirtualOccurrences(ruleVirt, dayBefore);
+    for (const v of pending) {
+      await db
+        .insert(transactions)
+        .values({
+          userId,
+          accountId: oldRule.accountId,
+          counterAccountId: oldRule.counterAccountId,
+          categoryId: oldRule.categoryId,
+          debtId: oldRule.debtId,
+          savingsGoalId: oldRule.savingsGoalId,
+          kind: oldRule.kind,
+          amountMinor: oldRule.amountMinor,
+          currency: oldRule.currency,
+          transactionDate: v.transactionDate,
+          description: oldRule.name,
+          notes: oldRule.notes ?? null,
+          recurringRuleId: oldRule.id,
+          isPaid: true,
+        })
+        .onConflictDoNothing({
+          target: [transactions.recurringRuleId, transactions.transactionDate],
+        });
+    }
+  }
+
   await db
     .delete(transactions)
     .where(
@@ -330,6 +367,37 @@ export async function editVirtualOccurrence(userId: UserId, input: EditVirtualIn
   if (input.mode === 'forward') {
     const cutoff = input.occurrenceDate;
     const dayBefore = dayjs(cutoff).subtract(1, 'day').format('YYYY-MM-DD');
+
+    // Edge case: si el cron está atrasado (nextOccurrenceDate < cutoff), las
+    // ocurrencias pendientes entre nextOcc y dayBefore se perderían al cerrar la
+    // regla vieja. Materializa esas pendientes con los valores VIEJOS antes.
+    if (rule.nextOccurrenceDate <= dayBefore) {
+      const ruleVirt = ruleRowToVirtual(rule);
+      const pending = generateVirtualOccurrences(ruleVirt, dayBefore);
+      for (const v of pending) {
+        await db
+          .insert(transactions)
+          .values({
+            userId,
+            accountId: rule.accountId,
+            counterAccountId: rule.counterAccountId,
+            categoryId: rule.categoryId,
+            debtId: rule.debtId,
+            savingsGoalId: rule.savingsGoalId,
+            kind: rule.kind,
+            amountMinor: rule.amountMinor,
+            currency: rule.currency,
+            transactionDate: v.transactionDate,
+            description: rule.name,
+            notes: rule.notes ?? null,
+            recurringRuleId: rule.id,
+            isPaid: true,
+          })
+          .onConflictDoNothing({
+            target: [transactions.recurringRuleId, transactions.transactionDate],
+          });
+      }
+    }
 
     // Borra ocurrencias materializadas de la regla vieja con fecha ≥ cutoff.
     await db
@@ -533,5 +601,27 @@ export const ALL_TRANSACTION_KINDS: TransactionKind[] = [
   'cc_charge',
   'cc_payment',
   'loan_payment',
+  'loan_charge',
   'savings_contribution',
 ];
+
+function ruleRowToVirtual(r: typeof recurringRules.$inferSelect): RecurringRuleForVirtuals {
+  return {
+    id: r.id,
+    kind: r.kind,
+    amountMinor: BigInt(r.amountMinor as unknown as string | number | bigint),
+    currency: r.currency,
+    frequency: r.frequency as RecurringRuleForVirtuals['frequency'],
+    dayOfMonth: r.dayOfMonth,
+    dayOfWeek: r.dayOfWeek,
+    startDate: r.startDate,
+    endDate: r.endDate,
+    nextOccurrenceDate: r.nextOccurrenceDate,
+    accountId: r.accountId,
+    counterAccountId: r.counterAccountId,
+    categoryId: r.categoryId,
+    debtId: r.debtId,
+    savingsGoalId: r.savingsGoalId,
+    isActive: r.isActive,
+  };
+}

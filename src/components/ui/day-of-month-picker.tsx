@@ -38,7 +38,8 @@ export function DayOfMonthPicker({ value, onChange, id }: Props) {
  * Dado un día del mes, calcula la próxima fecha que cumpla ese día,
  * empezando desde la fecha de referencia (usualmente hoy).
  *
- * - Si el día ya pasó este mes, devuelve el día N del próximo mes.
+ * - Si el día es HOY o futuro dentro de este mes, devuelve esa fecha de ESTE mes.
+ * - Si el día ya pasó este mes (estrictamente < hoy), devuelve el día N del próximo mes.
  * - Si el día N no existe en el mes (ej. 31 en febrero), se usa el último día.
  */
 export function nextDateForDayOfMonth(dayOfMonth: number, fromIso?: string): string {
@@ -49,6 +50,8 @@ export function nextDateForDayOfMonth(dayOfMonth: number, fromIso?: string): str
 
   let targetYear = year;
   let targetMonth = month;
+  // Cambio: `<` en vez de `<=`. Si elegís el día de HOY, el resultado es HOY,
+  // no el mismo día del próximo mes (que era contraintuitivo).
   if (dayOfMonth < todayDay) {
     targetMonth += 1;
     if (targetMonth > 11) {

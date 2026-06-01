@@ -1,7 +1,8 @@
 import 'server-only';
-import { and, eq, gt, inArray, isNotNull, lte, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { accounts, recurringRules, transactions } from '@/db/schema';
+import { NotFoundError } from '@/lib/errors';
 import type { UserId } from '@/types/ids';
 import type { AccountKind } from './delta';
 import { generateVirtualOccurrences, type RecurringRuleForVirtuals } from './virtuals';
@@ -21,7 +22,9 @@ export async function getRealBalanceMinor(
   const account = await db.query.accounts.findFirst({
     where: and(eq(accounts.id, accountId), eq(accounts.userId, userId)),
   });
-  if (!account) return 0n;
+  // Antes retornaba 0n silenciosamente — enmascaraba bugs (cuenta borrada, id mal
+  // pasado). Ahora propaga el error y el caller decide cómo manejarlo.
+  if (!account) throw new NotFoundError('Cuenta');
 
   const initial = BigInt(account.initialBalanceMinor as unknown as string | number | bigint);
   const deltas = await sumAccountDeltasAsOf(userId, [accountId], asOfDate);
@@ -124,7 +127,7 @@ export async function getProjectedBalanceMinor(
   const account = await db.query.accounts.findFirst({
     where: and(eq(accounts.id, accountId), eq(accounts.userId, userId)),
   });
-  if (!account) return { realMinor: 0n, projectedMinor: 0n };
+  if (!account) throw new NotFoundError('Cuenta');
   const initial = BigInt(account.initialBalanceMinor as unknown as string | number | bigint);
 
   if (asOfDate <= today) {
@@ -147,7 +150,7 @@ export async function getProjectedBalanceMinor(
       .select()
       .from(recurringRules)
       .where(and(eq(recurringRules.userId, userId), eq(recurringRules.isActive, true))),
-    materializedKeysInRange(userId, today, asOfDate),
+    materializedKeysUpTo(userId, asOfDate),
   ]);
 
   const real = initial + (todayDeltas.get(accountId) ?? 0n);
@@ -166,22 +169,23 @@ export async function getProjectedBalanceMinor(
 }
 
 /**
- * Set de (ruleId, date) ya materializadas en (exclusiveFrom, inclusiveTo] — para evitar
+ * Set de (ruleId, date) ya materializadas con date ≤ asOfDate — para evitar
  * contar doble cuando una virtual ya fue materializada (por edit puntual o cron).
+ *
+ * NO se acota por una fecha inferior: `generateVirtualOccurrences` parte de
+ * `rule.nextOccurrenceDate`, que puede quedar en el PASADO si el cron crasheó
+ * después del insert pero antes de actualizar la regla. Sin esto, esa ocurrencia
+ * pasada se contaría doble (como real + como virtual) hasta que el cron repare
+ * el estado en la siguiente corrida.
  */
-async function materializedKeysInRange(
-  userId: UserId,
-  exclusiveFrom: string,
-  inclusiveTo: string,
-): Promise<Set<string>> {
+async function materializedKeysUpTo(userId: UserId, asOfDate: string): Promise<Set<string>> {
   const matRows = await db
     .select({ ruleId: transactions.recurringRuleId, date: transactions.transactionDate })
     .from(transactions)
     .where(
       and(
         eq(transactions.userId, userId),
-        gt(transactions.transactionDate, exclusiveFrom),
-        lte(transactions.transactionDate, inclusiveTo),
+        lte(transactions.transactionDate, asOfDate),
         isNotNull(transactions.recurringRuleId),
       ),
     );
@@ -295,9 +299,7 @@ export async function listAccountsWithBalances(
           .from(recurringRules)
           .where(and(eq(recurringRules.userId, userId), eq(recurringRules.isActive, true)))
       : Promise.resolve([] as (typeof recurringRules.$inferSelect)[]),
-    isFuture
-      ? materializedKeysInRange(userId, today, asOfDate)
-      : Promise.resolve(new Set<string>()),
+    isFuture ? materializedKeysUpTo(userId, asOfDate) : Promise.resolve(new Set<string>()),
   ]);
 
   // Pre-genera ocurrencias virtuales por regla (compartidas entre todas las cuentas).

@@ -1,5 +1,5 @@
 import dayjs from 'dayjs';
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import ExcelJS from 'exceljs';
 import { type NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
@@ -49,6 +49,11 @@ function autoSizeColumns(sheet: ExcelJS.Worksheet) {
   });
 }
 
+// Cap defensivo: evita cargar más de TX_LIMIT transacciones en memoria al
+// generar el Excel. Para usuarios con historiales muy largos preferimos truncar
+// (mostrar las más recientes) antes que reventar el server con OOM.
+const TX_LIMIT = 10_000;
+
 export async function GET(_req: NextRequest) {
   const user = await getOrCreateUser();
   const userId = user.id;
@@ -56,12 +61,18 @@ export async function GET(_req: NextRequest) {
   const [accs, cats, txs, bgs, dbs, sgs, rrs] = await Promise.all([
     db.select().from(accounts).where(eq(accounts.userId, userId)),
     db.select().from(categories).where(eq(categories.userId, userId)),
-    db.select().from(transactions).where(eq(transactions.userId, userId)),
+    db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.userId, userId))
+      .orderBy(desc(transactions.transactionDate), desc(transactions.createdAt))
+      .limit(TX_LIMIT),
     db.select().from(budgets).where(eq(budgets.userId, userId)),
     db.select().from(debts).where(eq(debts.userId, userId)),
     db.select().from(savingsGoals).where(eq(savingsGoals.userId, userId)),
     db.select().from(recurringRules).where(eq(recurringRules.userId, userId)),
   ]);
+  const txsTruncated = txs.length === TX_LIMIT;
 
   const accountsById = new Map(accs.map((a) => [a.id, a]));
   const categoriesById = new Map(cats.map((c) => [c.id, c]));
@@ -87,7 +98,12 @@ export async function GET(_req: NextRequest) {
     { metric: '', value: '' },
     { metric: 'Cuentas registradas', value: accs.length },
     { metric: 'Categorías', value: cats.length },
-    { metric: 'Transacciones', value: txs.length },
+    {
+      metric: 'Transacciones',
+      value: txsTruncated
+        ? `${txs.length} (limitado a las ${TX_LIMIT.toLocaleString('es-CO')} más recientes)`
+        : txs.length,
+    },
     { metric: 'Reglas recurrentes', value: rrs.length },
     { metric: 'Préstamos installment', value: dbs.length },
     { metric: 'Metas de ahorro', value: sgs.length },

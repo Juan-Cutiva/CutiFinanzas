@@ -220,11 +220,18 @@ export function TransactionForm({
       form.setValue('accountId', null);
       form.setValue('currency', defaultCurrency);
     } else {
-      // Ajusta cuenta a las válidas para este kind
+      // Ajusta cuenta a las válidas para este kind. Si no hay cuentas válidas
+      // (p.ej. user solo tiene CCs y eligió kind=expense → accountsForOrigin=[]),
+      // resetea a null para que el form no arrastre un ID inválido. El render
+      // de abajo muestra un banner informando al usuario.
       const valid = accountsForOrigin.find((a) => a.id === form.getValues('accountId'));
-      if (!valid && accountsForOrigin[0]) {
-        form.setValue('accountId', accountsForOrigin[0].id);
-        form.setValue('currency', accountsForOrigin[0].currency);
+      if (!valid) {
+        if (accountsForOrigin[0]) {
+          form.setValue('accountId', accountsForOrigin[0].id);
+          form.setValue('currency', accountsForOrigin[0].currency);
+        } else {
+          form.setValue('accountId', null);
+        }
       }
     }
 
@@ -411,6 +418,26 @@ export function TransactionForm({
     return true;
   });
 
+  // Banners preventivos: si el kind seleccionado requiere algo que el usuario
+  // no tiene (categoría, cuenta asset, etc.), avisamos antes de que el submit
+  // falle con un error silencioso.
+  const missingRequirement: { message: string; href?: string } | null = (() => {
+    if (needsCategory && categories.length === 0) {
+      return {
+        message: 'Para registrar un gasto o ingreso necesitás crear al menos una categoría.',
+        href: '/ajustes',
+      };
+    }
+    if (!isLoanCharge && accountsForOrigin.length === 0) {
+      return {
+        message:
+          'Para este tipo de movimiento necesitás una cuenta válida (efectivo, débito o ahorros).',
+        href: '/cuentas',
+      };
+    }
+    return null;
+  })();
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col gap-4">
@@ -439,6 +466,18 @@ export function TransactionForm({
             </FormItem>
           )}
         />
+
+        {missingRequirement ? (
+          <div className="rounded-md border border-(--expense)/40 bg-(--expense)/10 p-3 text-sm">
+            <p className="font-medium text-amount-negative">Falta una configuración previa</p>
+            <p className="mt-1 text-xs text-muted-foreground">{missingRequirement.message}</p>
+            {missingRequirement.href ? (
+              <Button asChild variant="outline" size="sm" className="mt-2 h-8">
+                <a href={missingRequirement.href}>Ir a configurar</a>
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
 
         {/* Frecuencia */}
         {supportsRecurring ? (

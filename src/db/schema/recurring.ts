@@ -41,7 +41,13 @@ export const recurringRules = pgTable(
     // Nullable porque `loan_charge` recurrente (p.ej. interés mensual
     // capitalizado) puede no involucrar ninguna cuenta asset. Para los demás
     // kinds el form de zod sigue exigiendo accountId.
-    accountId: text('account_id').references(() => accounts.id, { onDelete: 'cascade' }),
+    //
+    // onDelete='set null' (antes cascade): si el usuario borra una cuenta, las
+    // reglas vinculadas pierden la referencia pero NO se borran. Antes, borrar
+    // una cuenta auxiliar destruía silenciosamente reglas activas (p.ej. cuota
+    // de préstamo) que la usaban como origen. Ahora el zod del form atrapará
+    // accountId nulo cuando el kind lo requiera, forzando al usuario a re-vincular.
+    accountId: text('account_id').references(() => accounts.id, { onDelete: 'set null' }),
     counterAccountId: text('counter_account_id').references(() => accounts.id, {
       onDelete: 'set null',
     }),
@@ -56,6 +62,12 @@ export const recurringRules = pgTable(
     currency: char('currency', { length: 3 }).notNull(),
     frequency: recurrenceFrequency('frequency').notNull(),
     dayOfMonth: integer('day_of_month'),
+    // NOTA: dayOfWeek está declarado pero NO se usa para programar ocurrencias.
+    // El día de la semana se infiere del `startDate` (que para reglas weekly/biweekly
+    // se setea desde el form vía DayOfWeekPicker → nextDateForDayOfWeek). El cron
+    // y `generateVirtualOccurrences` avanzan con `add(1|2, 'week')`, preservando
+    // automáticamente el día de la semana del startDate. Esta columna queda como
+    // metadata informativa (consultable en exports) pero no es la fuente de verdad.
     dayOfWeek: integer('day_of_week'),
     startDate: date('start_date').notNull(),
     endDate: date('end_date'),

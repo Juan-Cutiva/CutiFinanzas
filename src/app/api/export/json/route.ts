@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { desc, eq } from 'drizzle-orm';
 import { type NextRequest, NextResponse } from 'next/server';
 import { db } from '@/db/client';
 import { getOrCreateUser } from '@/db/queries/users';
@@ -27,6 +27,10 @@ function serialize(value: unknown): unknown {
   return value;
 }
 
+// Cap defensivo igual al de Excel: limita a TX_LIMIT transacciones más recientes
+// para no reventar la memoria del server con historiales largos.
+const TX_LIMIT = 10_000;
+
 export async function GET(_req: NextRequest) {
   const user = await getOrCreateUser();
   const userId = user.id;
@@ -34,16 +38,25 @@ export async function GET(_req: NextRequest) {
   const [accs, cats, txs, bgs, dbs, sgs, rrs] = await Promise.all([
     db.select().from(accounts).where(eq(accounts.userId, userId)),
     db.select().from(categories).where(eq(categories.userId, userId)),
-    db.select().from(transactions).where(eq(transactions.userId, userId)),
+    db
+      .select()
+      .from(transactions)
+      .where(eq(transactions.userId, userId))
+      .orderBy(desc(transactions.transactionDate), desc(transactions.createdAt))
+      .limit(TX_LIMIT),
     db.select().from(budgets).where(eq(budgets.userId, userId)),
     db.select().from(debts).where(eq(debts.userId, userId)),
     db.select().from(savingsGoals).where(eq(savingsGoals.userId, userId)),
     db.select().from(recurringRules).where(eq(recurringRules.userId, userId)),
   ]);
+  const txsTruncated = txs.length === TX_LIMIT;
 
   const payload = {
     schema: 'cutifinanzas/v2',
     exportedAt: new Date().toISOString(),
+    truncated: txsTruncated
+      ? { transactions: { limit: TX_LIMIT, note: 'Solo las más recientes' } }
+      : undefined,
     user: {
       id: user.id,
       email: user.email,

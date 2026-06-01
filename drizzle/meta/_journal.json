@@ -78,6 +78,13 @@
       "when": 1779667200000,
       "tag": "0010_loan_charge",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1779685200000,
+      "tag": "0011_relax_recurring_account_fk",
+      "breakpoints": true
     }
   ]
 }

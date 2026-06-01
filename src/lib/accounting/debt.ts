@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, eq, gt, inArray, isNotNull, lte, sql } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { debts, recurringRules, transactions } from '@/db/schema';
 import type { UserId } from '@/types/ids';
@@ -84,15 +84,19 @@ async function sumDebtMovementsByDebt(
 }
 
 /**
- * Set de (ruleId, date) ya materializadas como loan_payment o loan_charge en
- * (today, asOfDate] para los debts indicados. Sirve para no contar virtuales
+ * Set de (ruleId, date) ya materializadas como loan_payment o loan_charge con
+ * date ≤ asOfDate para los debts indicados. Sirve para no contar virtuales
  * cuando ya existen como reales (edit puntual o cron).
+ *
+ * Sin acotar por fecha inferior: `generateVirtualOccurrences` parte de
+ * `rule.nextOccurrenceDate`, que puede quedar atrasado si el cron crasheó
+ * entre el insert y la actualización de la regla. Sin esto, la ocurrencia
+ * pasada se contaría como real + como virtual hasta la próxima corrida.
  */
 async function materializedLoanKeys(
   userId: UserId,
   debtIds: string[],
-  exclusiveFrom: string,
-  inclusiveTo: string,
+  asOfDate: string,
 ): Promise<Set<string>> {
   if (debtIds.length === 0) return new Set();
   const rows = await db
@@ -103,8 +107,7 @@ async function materializedLoanKeys(
         eq(transactions.userId, userId),
         inArray(transactions.debtId, debtIds),
         inArray(transactions.kind, ['loan_payment', 'loan_charge']),
-        gt(transactions.transactionDate, exclusiveFrom),
-        lte(transactions.transactionDate, inclusiveTo),
+        lte(transactions.transactionDate, asOfDate),
         isNotNull(transactions.recurringRuleId),
       ),
     );
@@ -171,9 +174,7 @@ export async function listDebtsWithState(
             ),
           )
       : Promise.resolve([] as (typeof recurringRules.$inferSelect)[]),
-    isFuture
-      ? materializedLoanKeys(userId, debtIds, today, asOfDate)
-      : Promise.resolve(new Set<string>()),
+    isFuture ? materializedLoanKeys(userId, debtIds, asOfDate) : Promise.resolve(new Set<string>()),
   ]);
 
   // Pre-genera ocurrencias virtuales por regla. Mapea pagos y cargos por debtId.

@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import { type NextRequest, NextResponse } from 'next/server';
 import 'dayjs/locale/es';
-import { and, eq, inArray, lte } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, lte, or } from 'drizzle-orm';
 import webpush from 'web-push';
 import { db } from '@/db/client';
 import { pushSubscriptions, recurringRules } from '@/db/schema';
@@ -32,10 +32,14 @@ export async function GET(req: NextRequest) {
   const today = dayjs().format('YYYY-MM-DD');
   const inThreeDays = dayjs().add(3, 'day').format('YYYY-MM-DD');
 
+  // Excluye reglas que ya cerraron (endDate < today). Antes esto disparaba
+  // notificaciones de reglas cerradas cuando su nextOccurrenceDate no se había
+  // actualizado más allá del endDate.
   const due = await db.query.recurringRules.findMany({
     where: and(
       eq(recurringRules.isActive, true),
       lte(recurringRules.nextOccurrenceDate, inThreeDays),
+      or(isNull(recurringRules.endDate), gte(recurringRules.endDate, today)),
     ),
   });
 
