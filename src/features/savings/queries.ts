@@ -16,6 +16,13 @@ export async function listSavingsGoalsRaw(userId: UserId) {
 export async function listSavingsGoalsForDashboard(
   userId: UserId,
   today: string,
+  asOfDate?: string,
 ): Promise<SavingsGoalState[]> {
-  return listSavingsGoalsWithState(userId, today);
+  return listSavingsGoalsWithState(userId, today, asOfDate);
+}
+
+export async function getSavingsGoalById(userId: UserId, id: string) {
+  return db.query.savingsGoals.findFirst({
+    where: and(eq(savingsGoals.userId, userId), eq(savingsGoals.id, id)),
+  });
 }

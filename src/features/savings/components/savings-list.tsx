@@ -1,6 +1,7 @@
 'use client';
 
 import { Trash2 } from 'lucide-react';
+import Link from 'next/link';
 import { useAction } from 'next-safe-action/hooks';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -25,6 +26,7 @@ export interface SavingsGoalItem {
   name: string;
   targetAmountMinor: bigint;
   currentAmountMinor: bigint;
+  projectedAmountMinor: bigint;
   monthlyContributionMinor: bigint;
   currency: string;
   color: string;
@@ -52,15 +54,20 @@ export function SavingsList({ items }: Props) {
         {items.map((g) => {
           const target = Number(g.targetAmountMinor) / 100;
           const current = Number(g.currentAmountMinor) / 100;
+          const projected = Number(g.projectedAmountMinor) / 100;
           const monthly = Number(g.monthlyContributionMinor) / 100;
           const pct = target > 0 ? Math.round((current / target) * 100) : 0;
           const reached = pct >= 100;
 
           return (
-            <Card key={g.id}>
-              <CardContent className="space-y-3 p-5">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
+            <Card key={g.id} className="transition-colors hover:border-primary/40">
+              <CardContent className="space-y-3 p-0">
+                <div className="flex items-start justify-between gap-2 p-5 pb-0">
+                  <Link
+                    href={`/ahorros/${g.id}`}
+                    className="min-w-0 flex-1 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    aria-label={`Ver detalle de ${g.name}`}
+                  >
                     <h3 className="truncate text-sm font-semibold">{g.name}</h3>
                     {reached ? (
                       <Badge variant="success" className="mt-1">
@@ -71,7 +78,7 @@ export function SavingsList({ items }: Props) {
                         Meta {g.targetDate}
                       </Badge>
                     ) : null}
-                  </div>
+                  </Link>
                   <Button
                     size="icon"
                     variant="ghost"
@@ -81,7 +88,11 @@ export function SavingsList({ items }: Props) {
                     <Trash2 className="size-4 text-muted-foreground" />
                   </Button>
                 </div>
-                <div>
+                <Link
+                  href={`/ahorros/${g.id}`}
+                  className="block px-5 pb-5 focus-visible:outline-none"
+                  aria-label={`Ver detalle de ${g.name}`}
+                >
                   <p className="font-mono tabular-nums text-lg font-semibold">
                     {formatAmount(current, g.currency as CurrencyCode)}
                     <span className="text-sm font-normal text-muted-foreground">
@@ -93,10 +104,13 @@ export function SavingsList({ items }: Props) {
                   <p className="mt-1 text-xs text-muted-foreground">
                     {pct}% — aporte sugerido {formatAmount(monthly, g.currency as CurrencyCode)}/mes
                   </p>
-                  <p className="mt-1 text-[11px] text-muted-foreground">
-                    Aporta usando un movimiento tipo "Aporte a meta de ahorro".
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Estimado fin de mes:{' '}
+                    <span className="font-mono tabular-nums">
+                      {formatAmount(projected, g.currency as CurrencyCode)}
+                    </span>
                   </p>
-                </div>
+                </Link>
               </CardContent>
             </Card>
           );

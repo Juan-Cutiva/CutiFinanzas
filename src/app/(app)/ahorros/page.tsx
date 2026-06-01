@@ -5,23 +5,34 @@ import { getOrCreateUser } from '@/db/queries/users';
 import { CreateSavingsGoalButton } from '@/features/savings/components/create-savings-button';
 import { type SavingsGoalItem, SavingsList } from '@/features/savings/components/savings-list';
 import { listSavingsGoalsForDashboard } from '@/features/savings/queries';
+import { monthRange } from '@/lib/accounting';
 import { nowInTz } from '@/lib/format';
 import type { UserId } from '@/types/ids';
 
 export const metadata: Metadata = { title: 'Metas de ahorro' };
 export const dynamic = 'force-dynamic';
 
-export default async function AhorrosPage() {
+interface PageProps {
+  searchParams: Promise<{ y?: string; m?: string }>;
+}
+
+export default async function AhorrosPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
   const userId = user.id as UserId;
-  const today = nowInTz(user.timezone).format('YYYY-MM-DD');
+  const params = await searchParams;
+  const now = nowInTz(user.timezone);
+  const year = Number.parseInt(params.y ?? String(now.year()), 10);
+  const month = Number.parseInt(params.m ?? String(now.month() + 1), 10);
+  const today = now.format('YYYY-MM-DD');
+  const { to } = monthRange(year, month);
 
-  const goals = await listSavingsGoalsForDashboard(userId, today);
+  const goals = await listSavingsGoalsForDashboard(userId, today, to);
   const items: SavingsGoalItem[] = goals.map((g) => ({
     id: g.id,
     name: g.name,
     targetAmountMinor: g.targetAmountMinor,
     currentAmountMinor: g.currentAmountMinor,
+    projectedAmountMinor: g.projectedAmountMinor,
     monthlyContributionMinor: g.monthlyContributionMinor,
     currency: g.currency,
     color: g.color,

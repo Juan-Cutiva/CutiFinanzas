@@ -97,6 +97,22 @@ export async function listMovementsForDebt(userId: UserId, debtId: string) {
 /** @deprecated Use listMovementsForDebt — incluye cargos extra además de pagos. */
 export const listPaymentsForDebt = listMovementsForDebt;
 
+/**
+ * Lista todos los aportes (savings_contribution) a una meta de ahorro —
+ * para el historial en la página de detalle de la meta.
+ */
+export async function listContributionsForGoal(userId: UserId, goalId: string) {
+  return db.query.transactions.findMany({
+    where: and(
+      eq(transactions.userId, userId),
+      eq(transactions.kind, 'savings_contribution'),
+      eq(transactions.savingsGoalId, goalId),
+    ),
+    with: { account: true, recurringRule: true },
+    orderBy: [desc(transactions.transactionDate), desc(transactions.createdAt)],
+  });
+}
+
 export async function listTransactionsByAccount(
   userId: UserId,
   accountId: string,
