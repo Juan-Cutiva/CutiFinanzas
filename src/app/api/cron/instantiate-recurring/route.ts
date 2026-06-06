@@ -43,10 +43,14 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const today = dayjs().format('YYYY-MM-DD');
+  // Horizon = today + LOOKAHEAD. Materializa con anticipación para que el día
+  // del cargo el usuario ya tenga la transacción real (no como "programado").
+  // Default 1 día — configurable vía env CRON_MATERIALIZE_LOOKAHEAD_DAYS.
+  const lookaheadDays = env.CRON_MATERIALIZE_LOOKAHEAD_DAYS;
+  const horizon = dayjs().add(lookaheadDays, 'day').format('YYYY-MM-DD');
 
   const due = await db.query.recurringRules.findMany({
-    where: and(eq(recurringRules.isActive, true), lte(recurringRules.nextOccurrenceDate, today)),
+    where: and(eq(recurringRules.isActive, true), lte(recurringRules.nextOccurrenceDate, horizon)),
   });
 
   let created = 0;
@@ -59,7 +63,7 @@ export async function GET(req: NextRequest) {
   for (const rule of due) {
     let cursor = rule.nextOccurrenceDate;
 
-    while (cursor <= today && (!rule.endDate || cursor <= rule.endDate)) {
+    while (cursor <= horizon && (!rule.endDate || cursor <= rule.endDate)) {
       const occurDate = cursor;
       const nextCursor = nextDate(cursor, rule.frequency, rule.dayOfMonth);
 

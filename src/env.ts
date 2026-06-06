@@ -11,6 +11,10 @@ export const env = createEnv({
     VAPID_SUBJECT: z.string().email().or(z.string().startsWith('mailto:')).optional(),
     CRON_SECRET: z.string().min(16).optional(),
     BLOB_READ_WRITE_TOKEN: z.string().optional(),
+    // Días de anticipación con que el cron materializa recurrentes. 0 = solo el
+    // mismo día (clásico). 1 = un día antes (recomendado: si la tx es para el
+    // 6, se materializa el 5 para que esté lista al despertar el 6).
+    CRON_MATERIALIZE_LOOKAHEAD_DAYS: z.coerce.number().int().min(0).max(7).default(1),
   },
   client: {
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),
@@ -30,6 +34,7 @@ export const env = createEnv({
     VAPID_SUBJECT: process.env.VAPID_SUBJECT,
     CRON_SECRET: process.env.CRON_SECRET,
     BLOB_READ_WRITE_TOKEN: process.env.BLOB_READ_WRITE_TOKEN,
+    CRON_MATERIALIZE_LOOKAHEAD_DAYS: process.env.CRON_MATERIALIZE_LOOKAHEAD_DAYS,
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY,
     NEXT_PUBLIC_CLERK_SIGN_IN_URL: process.env.NEXT_PUBLIC_CLERK_SIGN_IN_URL,
     NEXT_PUBLIC_CLERK_SIGN_UP_URL: process.env.NEXT_PUBLIC_CLERK_SIGN_UP_URL,
