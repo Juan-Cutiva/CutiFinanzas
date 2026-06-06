@@ -86,9 +86,12 @@ export async function GET(req: NextRequest) {
             recurringRuleId: rule.id,
             isPaid: true,
           })
-          .onConflictDoNothing({
-            target: [transactions.recurringRuleId, transactions.transactionDate],
-          })
+          // Sin `target` — el unique index es PARTIAL (WHERE recurring_rule_id
+          // is not null) y PG rechaza `ON CONFLICT (cols)` sin la WHERE clause
+          // correspondiente. `onConflictDoNothing()` plain absorbe cualquier
+          // conflict (en la práctica solo el unique parcial podría dispararse
+          // por reentrada concurrente o crash entre INSERT y UPDATE).
+          .onConflictDoNothing()
           .returning({ id: transactions.id });
 
         if (inserted.length > 0) created++;

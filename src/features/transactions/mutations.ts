@@ -195,9 +195,9 @@ export async function updateRecurring(userId: UserId, input: UpdateRecurringInpu
           recurringRuleId: oldRule.id,
           isPaid: true,
         })
-        .onConflictDoNothing({
-          target: [transactions.recurringRuleId, transactions.transactionDate],
-        });
+        // Sin `target` — el unique index es PARTIAL y PG rechaza
+        // `ON CONFLICT (cols)` sin la WHERE clause correspondiente.
+        .onConflictDoNothing();
     }
   }
 
@@ -393,9 +393,9 @@ export async function editVirtualOccurrence(userId: UserId, input: EditVirtualIn
             recurringRuleId: rule.id,
             isPaid: true,
           })
-          .onConflictDoNothing({
-            target: [transactions.recurringRuleId, transactions.transactionDate],
-          });
+          // Sin `target` — el unique index es PARTIAL y PG rechaza
+          // `ON CONFLICT (cols)` sin la WHERE clause correspondiente.
+          .onConflictDoNothing();
       }
     }
 
