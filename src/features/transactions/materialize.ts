@@ -143,5 +143,13 @@ export const ensureRecurringMaterialized = cache(async function ensureRecurringM
   userId: UserId,
   timezone: string,
 ): Promise<MaterializeResult> {
-  return materializeDueForUser(userId, timezone);
+  // NUNCA debe tumbar la página: la materialización lazy es una mejora de
+  // conveniencia, no un paso crítico del render. Si falla (DB lenta, timeout,
+  // etc.), la página igual debe cargar; el cron y el próximo load reintentan.
+  try {
+    return await materializeDueForUser(userId, timezone);
+  } catch (err) {
+    console.error('[ensureRecurringMaterialized] falló (no crítico):', err);
+    return { created: 0, errors: [], stillOverdue: 0 };
+  }
 });

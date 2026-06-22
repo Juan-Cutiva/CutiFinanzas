@@ -2,7 +2,6 @@ import 'server-only';
 import { and, eq, inArray, isNotNull, lte, sql } from 'drizzle-orm';
 import { db } from '@/db/client';
 import { accounts, recurringRules, transactions } from '@/db/schema';
-import { NotFoundError } from '@/lib/errors';
 import type { UserId } from '@/types/ids';
 import type { AccountKind } from './delta';
 import { generateVirtualOccurrences, type RecurringRuleForVirtuals } from './virtuals';
@@ -22,9 +21,13 @@ export async function getRealBalanceMinor(
   const account = await db.query.accounts.findFirst({
     where: and(eq(accounts.id, accountId), eq(accounts.userId, userId)),
   });
-  // Antes retornaba 0n silenciosamente — enmascaraba bugs (cuenta borrada, id mal
-  // pasado). Ahora propaga el error y el caller decide cómo manejarlo.
-  if (!account) throw new NotFoundError('Cuenta');
+  // Cuenta inexistente (borrada, id inválido): logueamos y devolvemos 0 en vez de
+  // lanzar. Lanzar aquí tumbaba toda la página en producción ante un dato huérfano;
+  // un 0 con warning es resiliente y el resto del render sobrevive.
+  if (!account) {
+    console.warn(`[getRealBalanceMinor] cuenta no encontrada: ${accountId}`);
+    return 0n;
+  }
 
   const initial = BigInt(account.initialBalanceMinor as unknown as string | number | bigint);
   const deltas = await sumAccountDeltasAsOf(userId, [accountId], asOfDate);
@@ -127,7 +130,10 @@ export async function getProjectedBalanceMinor(
   const account = await db.query.accounts.findFirst({
     where: and(eq(accounts.id, accountId), eq(accounts.userId, userId)),
   });
-  if (!account) throw new NotFoundError('Cuenta');
+  if (!account) {
+    console.warn(`[getProjectedBalanceMinor] cuenta no encontrada: ${accountId}`);
+    return { realMinor: 0n, projectedMinor: 0n };
+  }
   const initial = BigInt(account.initialBalanceMinor as unknown as string | number | bigint);
 
   if (asOfDate <= today) {
