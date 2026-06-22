@@ -56,7 +56,11 @@ export async function createTransaction(userId: UserId, input: CreateTransaction
   }
 
   // Recurrente: rule + primera ocurrencia.
-  const next = nextOccurrenceFor(input.transactionDate, input.recurrence.frequency);
+  const next = nextOccurrenceFor(
+    input.transactionDate,
+    input.recurrence.frequency,
+    input.recurrence.dayOfMonth ?? null,
+  );
   const [rule] = await db
     .insert(recurringRules)
     .values({
@@ -80,9 +84,12 @@ export async function createTransaction(userId: UserId, input: CreateTransaction
     .returning();
   if (!rule) throw new Error('No se pudo crear la regla recurrente');
 
+  // La primera ocurrencia de una recurrente nace SIN confirmar (isPaid=false):
+  // el usuario la marca cuando realmente paga/recibe. Las one-off (arriba) sí
+  // quedan confirmadas. isPaid no afecta balances (solo marca visual).
   const [row] = await db
     .insert(transactions)
-    .values({ ...baseValues, recurringRuleId: rule.id })
+    .values({ ...baseValues, recurringRuleId: rule.id, isPaid: false })
     .onConflictDoNothing()
     .returning();
   return row ?? null;
@@ -193,7 +200,8 @@ export async function updateRecurring(userId: UserId, input: UpdateRecurringInpu
           description: oldRule.name,
           notes: oldRule.notes ?? null,
           recurringRuleId: oldRule.id,
-          isPaid: true,
+          // Recurrente materializada → sin confirmar (checkbox vacío).
+          isPaid: false,
         })
         // Sin `target` — el unique index es PARTIAL y PG rechaza
         // `ON CONFLICT (cols)` sin la WHERE clause correspondiente.
@@ -218,6 +226,7 @@ export async function updateRecurring(userId: UserId, input: UpdateRecurringInpu
   const next = nextOccurrenceFor(
     cutoffDate,
     oldRule.frequency as 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly',
+    oldRule.dayOfMonth,
   );
 
   const [newRule] = await db
@@ -271,7 +280,8 @@ export async function updateRecurring(userId: UserId, input: UpdateRecurringInpu
       notes: input.notes ?? null,
       receiptUrl: input.receiptUrl ?? null,
       recurringRuleId: newRule.id,
-      isPaid: true,
+      // Recurrente materializada → sin confirmar (checkbox vacío).
+      isPaid: false,
     })
     .onConflictDoNothing()
     .returning();
@@ -391,7 +401,8 @@ export async function editVirtualOccurrence(userId: UserId, input: EditVirtualIn
             description: rule.name,
             notes: rule.notes ?? null,
             recurringRuleId: rule.id,
-            isPaid: true,
+            // Recurrente materializada → sin confirmar (checkbox vacío).
+            isPaid: false,
           })
           // Sin `target` — el unique index es PARTIAL y PG rechaza
           // `ON CONFLICT (cols)` sin la WHERE clause correspondiente.
@@ -413,6 +424,7 @@ export async function editVirtualOccurrence(userId: UserId, input: EditVirtualIn
     const next = nextOccurrenceFor(
       cutoff,
       rule.frequency as 'weekly' | 'biweekly' | 'monthly' | 'quarterly' | 'yearly',
+      rule.dayOfMonth,
     );
     const [newRule] = await db
       .insert(recurringRules)
@@ -465,7 +477,8 @@ export async function editVirtualOccurrence(userId: UserId, input: EditVirtualIn
         description: input.description ?? rule.name,
         notes: input.notes ?? null,
         recurringRuleId: newRule.id,
-        isPaid: true,
+        // Recurrente materializada → sin confirmar (checkbox vacío).
+        isPaid: false,
       })
       .onConflictDoNothing()
       .returning();
@@ -514,7 +527,8 @@ export async function editVirtualOccurrence(userId: UserId, input: EditVirtualIn
       description: input.description ?? rule.name,
       notes: input.notes ?? null,
       recurringRuleId: rule.id,
-      isPaid: true,
+      // Recurrente materializada → sin confirmar (checkbox vacío).
+      isPaid: false,
     })
     .onConflictDoNothing()
     .returning();

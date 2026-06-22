@@ -8,6 +8,7 @@ import {
   TransactionList,
   type TxListItem,
 } from '@/features/transactions/components/transaction-list';
+import { ensureRecurringMaterialized } from '@/features/transactions/materialize';
 import { listExpenseByMonth } from '@/features/transactions/queries';
 import { listVirtualsForMonth } from '@/lib/accounting';
 import { EXPENSE_KINDS, type TransactionKind } from '@/lib/accounting/shared';
@@ -25,6 +26,8 @@ interface PageProps {
 export default async function GastosPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
   const userId = user.id as UserId;
+  // Self-healing: materializa recurrentes vencidas al cargar (no depende del cron).
+  await ensureRecurringMaterialized(userId, user.timezone);
   const currency = user.defaultCurrency as CurrencyCode;
   const params = await searchParams;
   const now = nowInTz(user.timezone);

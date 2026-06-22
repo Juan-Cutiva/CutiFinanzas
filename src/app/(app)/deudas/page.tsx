@@ -5,6 +5,7 @@ import { getOrCreateUser } from '@/db/queries/users';
 import { CreateDebtButton } from '@/features/debts/components/create-debt-button';
 import { type DebtItem, DebtList } from '@/features/debts/components/debt-list';
 import { listDebtsForDashboard } from '@/features/debts/queries';
+import { ensureRecurringMaterialized } from '@/features/transactions/materialize';
 import { monthRange } from '@/lib/accounting';
 import { formatMonthYear, nowInTz } from '@/lib/format';
 import type { UserId } from '@/types/ids';
@@ -19,6 +20,8 @@ interface PageProps {
 export default async function DeudasPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
   const userId = user.id as UserId;
+  // Self-healing: materializa recurrentes vencidas al cargar (no depende del cron).
+  await ensureRecurringMaterialized(userId, user.timezone);
   const params = await searchParams;
   const now = nowInTz(user.timezone);
   const year = Number.parseInt(params.y ?? String(now.year()), 10);

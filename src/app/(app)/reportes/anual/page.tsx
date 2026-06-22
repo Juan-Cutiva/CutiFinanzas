@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { getOrCreateUser } from '@/db/queries/users';
 import { YearlyChart } from '@/features/reports/components/yearly-chart';
+import { ensureRecurringMaterialized } from '@/features/transactions/materialize';
 import { getPeriodTotals, monthRange } from '@/lib/accounting';
 import { formatAmount, nowInTz } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
@@ -19,6 +20,8 @@ interface SearchParams {
 export default async function ReporteAnualPage({ searchParams }: SearchParams) {
   const user = await getOrCreateUser();
   const userId = user.id as UserId;
+  // Self-healing: materializa recurrentes vencidas al cargar (no depende del cron).
+  await ensureRecurringMaterialized(userId, user.timezone);
   const currency = user.defaultCurrency as CurrencyCode;
   const params = await searchParams;
   const year = Number.parseInt(params.year ?? String(nowInTz(user.timezone).year()), 10);

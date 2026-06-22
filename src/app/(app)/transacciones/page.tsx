@@ -7,6 +7,7 @@ import {
   TransactionList,
   type TxListItem,
 } from '@/features/transactions/components/transaction-list';
+import { ensureRecurringMaterialized } from '@/features/transactions/materialize';
 import { listTransactionsByMonth } from '@/features/transactions/queries';
 import { listVirtualsForMonth } from '@/lib/accounting';
 import type { TransactionKind } from '@/lib/accounting/shared';
@@ -29,6 +30,8 @@ export default async function TransaccionesPage({ searchParams }: PageProps) {
   const monthLabel = formatMonthYear(`${year}-${String(month).padStart(2, '0')}-01`);
 
   const userId = user.id as UserId;
+  // Self-healing: materializa recurrentes vencidas al cargar (no depende del cron).
+  await ensureRecurringMaterialized(userId, user.timezone);
   const [items, virtuals, categories] = await Promise.all([
     listTransactionsByMonth(userId, year, month),
     listVirtualsForMonth(userId, year, month),

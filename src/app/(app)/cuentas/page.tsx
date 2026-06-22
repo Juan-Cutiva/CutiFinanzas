@@ -8,6 +8,7 @@ import {
 } from '@/features/accounts/components/account-list';
 import { CreateAccountButton } from '@/features/accounts/components/create-account-button';
 import type { AccountTypeCode } from '@/features/accounts/schema';
+import { ensureRecurringMaterialized } from '@/features/transactions/materialize';
 import { listAccountsWithBalances, monthRange } from '@/lib/accounting';
 import { nowInTz } from '@/lib/format';
 import type { UserId } from '@/types/ids';
@@ -22,6 +23,8 @@ interface PageProps {
 export default async function CuentasPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
   const userId = user.id as UserId;
+  // Self-healing: materializa recurrentes vencidas al cargar (no depende del cron).
+  await ensureRecurringMaterialized(userId, user.timezone);
   const params = await searchParams;
   const now = nowInTz(user.timezone);
   const year = Number.parseInt(params.y ?? String(now.year()), 10);

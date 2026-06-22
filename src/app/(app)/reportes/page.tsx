@@ -10,6 +10,7 @@ import { CategoryChart } from '@/features/reports/components/category-chart';
 import { CategoryInsights } from '@/features/reports/components/category-insights';
 import { SankeyFlow } from '@/features/reports/components/sankey-flow';
 import { categoryInsights } from '@/features/reports/predictions';
+import { ensureRecurringMaterialized } from '@/features/transactions/materialize';
 import { getCategoryExpenseTotals, getPeriodTotals, monthRange } from '@/lib/accounting';
 import { formatAmount, formatMonthYear, nowInTz } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
@@ -25,6 +26,8 @@ interface PageProps {
 export default async function ReportesPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
   const userId = user.id as UserId;
+  // Self-healing: materializa recurrentes vencidas al cargar (no depende del cron).
+  await ensureRecurringMaterialized(userId, user.timezone);
   const currency = user.defaultCurrency as CurrencyCode;
   const params = await searchParams;
   const now = nowInTz(user.timezone);

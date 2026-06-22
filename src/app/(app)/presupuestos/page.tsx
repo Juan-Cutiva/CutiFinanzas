@@ -6,6 +6,7 @@ import { BudgetList, type BudgetWithSpent } from '@/features/budgets/components/
 import { CreateBudgetButton } from '@/features/budgets/components/create-budget-button';
 import { listBudgetsByMonth } from '@/features/budgets/queries';
 import { listCategoriesByUser } from '@/features/categories/queries';
+import { ensureRecurringMaterialized } from '@/features/transactions/materialize';
 import { getCategoryExpenseTotals, monthRange } from '@/lib/accounting';
 import { formatMonthYear, nowInTz } from '@/lib/format';
 import type { UserId } from '@/types/ids';
@@ -20,6 +21,8 @@ interface PageProps {
 export default async function PresupuestosPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
   const userId = user.id as UserId;
+  // Self-healing: materializa recurrentes vencidas al cargar (no depende del cron).
+  await ensureRecurringMaterialized(userId, user.timezone);
   const params = await searchParams;
   const now = nowInTz(user.timezone);
   const year = Number.parseInt(params.y ?? String(now.year()), 10);

@@ -1,5 +1,6 @@
 import dayjs from 'dayjs';
 import type { TransactionKind } from './kinds';
+import { nextOccurrence } from './recurrence';
 
 /**
  * Materialización VIRTUAL (en memoria) de ocurrencias futuras de reglas recurrentes
@@ -95,17 +96,12 @@ export function generateVirtualOccurrences(
   return out;
 }
 
+/**
+ * Avanza el cursor a la siguiente ocurrencia usando la MISMA lógica que el
+ * materializador/cron (`nextOccurrence`), incluyendo el clamp de `dayOfMonth`.
+ * Antes usaba `add(1,'month')` plano, lo que divergía del cron para reglas de
+ * día 29-31 y producía huecos/duplicados.
+ */
 function advance(d: dayjs.Dayjs, rule: RecurringRuleForVirtuals): dayjs.Dayjs {
-  switch (rule.frequency) {
-    case 'weekly':
-      return d.add(1, 'week');
-    case 'biweekly':
-      return d.add(2, 'week');
-    case 'monthly':
-      return d.add(1, 'month');
-    case 'quarterly':
-      return d.add(3, 'month');
-    case 'yearly':
-      return d.add(1, 'year');
-  }
+  return dayjs(nextOccurrence(d.format('YYYY-MM-DD'), rule.frequency, rule.dayOfMonth));
 }

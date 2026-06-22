@@ -5,6 +5,7 @@ import { getOrCreateUser } from '@/db/queries/users';
 import { CreateSavingsGoalButton } from '@/features/savings/components/create-savings-button';
 import { type SavingsGoalItem, SavingsList } from '@/features/savings/components/savings-list';
 import { listSavingsGoalsForDashboard } from '@/features/savings/queries';
+import { ensureRecurringMaterialized } from '@/features/transactions/materialize';
 import { monthRange } from '@/lib/accounting';
 import { nowInTz } from '@/lib/format';
 import type { UserId } from '@/types/ids';
@@ -19,6 +20,8 @@ interface PageProps {
 export default async function AhorrosPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
   const userId = user.id as UserId;
+  // Self-healing: materializa recurrentes vencidas al cargar (no depende del cron).
+  await ensureRecurringMaterialized(userId, user.timezone);
   const params = await searchParams;
   const now = nowInTz(user.timezone);
   const year = Number.parseInt(params.y ?? String(now.year()), 10);

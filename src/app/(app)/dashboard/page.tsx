@@ -8,6 +8,7 @@ import {
   calculateRemainingMonths,
   debtProgress,
 } from '@/features/debts/domain';
+import { ensureRecurringMaterialized } from '@/features/transactions/materialize';
 import {
   getPeriodTotals,
   isAsset,
@@ -43,6 +44,8 @@ interface PageProps {
 export default async function DashboardPage({ searchParams }: PageProps) {
   const user = await getOrCreateUser();
   const userId = user.id as UserId;
+  // Self-healing: materializa recurrentes vencidas al cargar (no depende del cron).
+  await ensureRecurringMaterialized(userId, user.timezone);
   const currency = user.defaultCurrency as CurrencyCode;
   const params = await searchParams;
   const now = nowInTz(user.timezone);

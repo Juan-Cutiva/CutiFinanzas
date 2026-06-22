@@ -11,10 +11,11 @@ export const env = createEnv({
     VAPID_SUBJECT: z.string().email().or(z.string().startsWith('mailto:')).optional(),
     CRON_SECRET: z.string().min(16).optional(),
     BLOB_READ_WRITE_TOKEN: z.string().optional(),
-    // Días de anticipación con que el cron materializa recurrentes. 0 = solo el
-    // mismo día (clásico). 1 = un día antes (recomendado: si la tx es para el
-    // 6, se materializa el 5 para que esté lista al despertar el 6).
-    CRON_MATERIALIZE_LOOKAHEAD_DAYS: z.coerce.number().int().min(0).max(7).default(1),
+    // Días de anticipación con que se materializan recurrentes (cron + lazy).
+    // 0 = solo el mismo día. Default 2: tolera que el cron de Vercel (Hobby, sin
+    // garantía de hora ni reintentos) se salte un día — la tx del 6 se materializa
+    // desde el 4-5 y queda lista. La materialización lazy on-load lo refuerza.
+    CRON_MATERIALIZE_LOOKAHEAD_DAYS: z.coerce.number().int().min(0).max(31).default(2),
   },
   client: {
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: z.string().min(1),

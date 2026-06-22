@@ -14,6 +14,7 @@ import {
   TransactionList,
   type TxListItem,
 } from '@/features/transactions/components/transaction-list';
+import { ensureRecurringMaterialized } from '@/features/transactions/materialize';
 import { listTransactionsByAccount } from '@/features/transactions/queries';
 import {
   getCreditCardState,
@@ -39,6 +40,8 @@ export default async function AccountDetailPage({ params, searchParams }: Props)
   const sp = await searchParams;
   const user = await getOrCreateUser();
   const userId = user.id as UserId;
+  // Self-healing: materializa recurrentes vencidas al cargar (no depende del cron).
+  await ensureRecurringMaterialized(userId, user.timezone);
   const account = await getAccountById(userId, id);
   if (!account) notFound();
 
