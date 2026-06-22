@@ -1,7 +1,17 @@
-import { ARS, BRL, CLP, COP, EUR, GBP, MXN, PEN, USD } from '@dinero.js/currencies';
+import { ARS, AUD, BRL, CLP, COP, EUR, GBP, MXN, PEN, USD } from '@dinero.js/currencies';
 import { add, allocate, type Dinero, dinero, multiply, subtract, toSnapshot } from 'dinero.js';
 
-export type CurrencyCode = 'COP' | 'USD' | 'EUR' | 'MXN' | 'ARS' | 'CLP' | 'PEN' | 'BRL' | 'GBP';
+export type CurrencyCode =
+  | 'COP'
+  | 'USD'
+  | 'EUR'
+  | 'MXN'
+  | 'ARS'
+  | 'CLP'
+  | 'PEN'
+  | 'BRL'
+  | 'GBP'
+  | 'AUD';
 
 type DineroCurrency = typeof COP;
 
@@ -15,6 +25,7 @@ const CURRENCY_REGISTRY: Record<CurrencyCode, DineroCurrency> = {
   PEN,
   BRL,
   GBP,
+  AUD,
 };
 
 export type Money = Dinero<number>;
@@ -139,4 +150,5 @@ export const SUPPORTED_CURRENCIES: ReadonlyArray<{
   { code: 'PEN', name: 'Sol peruano', symbol: 'S/' },
   { code: 'BRL', name: 'Real brasileño', symbol: 'R$' },
   { code: 'GBP', name: 'Libra esterlina', symbol: '£' },
+  { code: 'AUD', name: 'Dólar australiano', symbol: 'A$' },
 ];

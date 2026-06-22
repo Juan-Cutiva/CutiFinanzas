@@ -14,7 +14,11 @@ export const DEFAULT_CURRENCY: CurrencyCode = 'COP';
 export const DEFAULT_LOCALE = 'es-CO';
 export const DEFAULT_TIMEZONE = 'America/Bogota';
 
-export const EXCHANGE_API_URL = 'https://api.frankfurter.dev/v1';
+// open.er-api.com (endpoint abierto de ExchangeRate-API): gratis, sin API key,
+// cubre 160+ monedas INCLUYENDO COP y AUD (Frankfurter no tenía COP), con
+// actualización diaria y campo de "última actualización". Un GET a /latest/{base}
+// devuelve todas las tasas respecto a esa base.
+export const EXCHANGE_API_URL = 'https://open.er-api.com/v6';
 
 export const ROUTES = {
   home: '/',
@@ -25,6 +29,7 @@ export const ROUTES = {
   deudas: '/deudas',
   ahorros: '/ahorros',
   reportes: '/reportes',
+  divisas: '/divisas',
   ajustes: '/ajustes',
   mas: '/mas',
   signIn: '/sign-in',

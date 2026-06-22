@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  ArrowLeftRight,
   BarChart3,
   CreditCard,
   Home,
@@ -40,6 +41,7 @@ const SECTIONS = [
     label: 'Análisis',
     items: [
       { href: '/reportes', label: 'Reportes', icon: BarChart3 },
+      { href: '/divisas', label: 'Divisas', icon: ArrowLeftRight },
       { href: '/ajustes', label: 'Ajustes', icon: Settings },
     ],
   },
