@@ -58,21 +58,22 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const isFutureMonth = to > todayIso;
 
   const subPeriods = subPeriodsForMonth(year, month, user.payAnchorDates ?? [6, 21]);
-  const primaryAccountId = user.primaryAccountId ?? undefined;
 
   const [accounts, totals, savingsState, debtsState, subPeriodTotals] = await Promise.all([
     listAccountsWithBalances(userId, to, todayIso),
     getPeriodTotals(userId, from, to, { includeVirtuals: isFutureMonth, today: todayIso }),
     listSavingsGoalsWithState(userId, todayIso),
     listDebtsWithState(userId, to, todayIso),
-    // Si hay cuenta principal definida, las quincenas filtran solo movimientos
-    // donde esa cuenta es origen o destino. Refleja el mental model "mi quincena".
+    // Quincenas con la MISMA lógica GLOBAL que el total del mes y /transacciones:
+    // ingresos − gastos, con transferencias entre cuentas propias NEUTRAS (no son
+    // gasto ni ingreso). Antes filtraba por cuenta principal y contaba el traspaso
+    // como salida, lo que hacía una quincena negativa por mover dinero entre
+    // cuentas propias y rompía la suma quincena1 + quincena2 = total del mes.
     Promise.all(
       subPeriods.map((p) =>
         getPeriodTotals(userId, p.from, p.to, {
           includeVirtuals: isFutureMonth,
           today: todayIso,
-          accountId: primaryAccountId,
         }),
       ),
     ),
