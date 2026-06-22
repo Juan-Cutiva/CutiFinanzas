@@ -8,15 +8,15 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
+import {
+  ResponsiveDialog,
+  ResponsiveDialogBody,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import { formatAmount } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import { deleteSavingsGoalAction } from '../actions';
@@ -117,26 +117,28 @@ export function SavingsList({ items }: Props) {
         })}
       </div>
 
-      <Dialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>¿Eliminar esta meta?</DialogTitle>
-            <DialogDescription>{deleting?.name}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setDeleting(null)}>
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={remove.isPending}
-              onClick={() => deleting && remove.execute({ id: deleting.id })}
-            >
-              {remove.isPending ? 'Eliminando…' : 'Eliminar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ResponsiveDialog open={!!deleting} onOpenChange={(o) => !o && setDeleting(null)}>
+        <ResponsiveDialogContent>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>¿Eliminar esta meta?</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>{deleting?.name}</ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <ResponsiveDialogBody>
+            <div className="mt-2 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setDeleting(null)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={remove.isPending}
+                onClick={() => deleting && remove.execute({ id: deleting.id })}
+              >
+                {remove.isPending ? 'Eliminando…' : 'Eliminar'}
+              </Button>
+            </div>
+          </ResponsiveDialogBody>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
     </>
   );
 }

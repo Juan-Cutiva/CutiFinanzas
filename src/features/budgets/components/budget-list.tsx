@@ -6,15 +6,15 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
+import {
+  ResponsiveDialog,
+  ResponsiveDialogBody,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import { formatAmount } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import { deleteBudgetAction } from '../actions';
@@ -143,29 +143,31 @@ export function BudgetList({ items }: { items: BudgetWithSpent[] }) {
 
       <EditBudgetDialog budget={editing} onClose={() => setEditing(null)} />
 
-      <Dialog open={!!pendingDelete} onOpenChange={(o) => !o && setPendingDelete(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>¿Eliminar este presupuesto?</DialogTitle>
-            <DialogDescription>
+      <ResponsiveDialog open={!!pendingDelete} onOpenChange={(o) => !o && setPendingDelete(null)}>
+        <ResponsiveDialogContent>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>¿Eliminar este presupuesto?</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
               Borra el presupuesto de {pendingDelete?.category.name}. Si era una regla recurrente,
               los meses futuros volverán al monto anterior (o quedarán sin presupuesto).
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPendingDelete(null)}>
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={isPending}
-              onClick={() => pendingDelete && execute({ id: pendingDelete.id })}
-            >
-              {isPending ? 'Eliminando…' : 'Eliminar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <ResponsiveDialogBody>
+            <div className="mt-2 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setPendingDelete(null)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={isPending}
+                onClick={() => pendingDelete && execute({ id: pendingDelete.id })}
+              >
+                {isPending ? 'Eliminando…' : 'Eliminar'}
+              </Button>
+            </div>
+          </ResponsiveDialogBody>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
     </>
   );
 }

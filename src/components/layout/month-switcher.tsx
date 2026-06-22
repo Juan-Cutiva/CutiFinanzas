@@ -92,7 +92,7 @@ export function MonthSwitcher() {
         size="icon"
         variant="ghost"
         aria-label="Mes anterior"
-        className="size-10 shrink-0 sm:size-9"
+        className="size-11 shrink-0 sm:size-9"
         onClick={() => shift(-1)}
       >
         <ChevronLeft className="size-4" />
@@ -172,7 +172,7 @@ export function MonthSwitcher() {
           value={String(monthParam)}
           onValueChange={(v) => navigate(yearParam, Number.parseInt(v, 10))}
         >
-          <SelectTrigger className="h-9 w-32 text-xs">
+          <SelectTrigger className="h-9 w-36 text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -187,7 +187,7 @@ export function MonthSwitcher() {
           value={String(yearParam)}
           onValueChange={(v) => navigate(Number.parseInt(v, 10), monthParam)}
         >
-          <SelectTrigger className="h-9 w-20 text-xs">
+          <SelectTrigger className="h-9 w-24 text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -204,7 +204,7 @@ export function MonthSwitcher() {
         size="icon"
         variant="ghost"
         aria-label="Mes siguiente"
-        className="size-10 shrink-0 sm:size-9"
+        className="size-11 shrink-0 sm:size-9"
         onClick={() => shift(1)}
       >
         <ChevronRight className="size-4" />

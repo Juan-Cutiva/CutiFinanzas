@@ -301,7 +301,7 @@ function KpiCard({
       </CardHeader>
       <CardContent className="p-5 pt-0">
         <p
-          className={`truncate font-mono tabular-nums text-2xl font-semibold tracking-tight ${
+          className={`truncate font-mono tabular-nums text-xl font-semibold tracking-tight sm:text-2xl ${
             tone === 'positive'
               ? 'text-amount-positive'
               : tone === 'negative'

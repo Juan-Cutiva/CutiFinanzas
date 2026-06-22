@@ -20,20 +20,20 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import {
+  ResponsiveDialog,
+  ResponsiveDialogBody,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import {
   deltaFor,
   isExpenseOfMonth,
@@ -283,67 +283,70 @@ export function TransactionList({ items, categories = [], viewAccountId }: Props
         })}
       </div>
 
-      <Dialog open={!!pendingDelete} onOpenChange={(o) => !o && setPendingDelete(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>¿Eliminar este movimiento?</DialogTitle>
-            <DialogDescription>
+      <ResponsiveDialog open={!!pendingDelete} onOpenChange={(o) => !o && setPendingDelete(null)}>
+        <ResponsiveDialogContent>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>¿Eliminar este movimiento?</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
               Esta acción no se puede deshacer. Los saldos se recalculan al instante.
-            </DialogDescription>
-          </DialogHeader>
-          {pendingDelete?.recurringRuleId || pendingDelete?.isVirtual ? (
-            <fieldset className="rounded-md border border-border/60 bg-muted/30 p-3">
-              <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Alcance
-              </legend>
-              <div className="flex flex-col gap-2">
-                <label className="flex cursor-pointer items-start gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="del-scope"
-                    value="this_one"
-                    checked={deleteScope === 'this_one'}
-                    onChange={() => setDeleteScope('this_one')}
-                    className="mt-1"
-                  />
-                  <span>
-                    <span className="font-medium">Solo esta ocurrencia</span>
-                    <span className="block text-xs text-muted-foreground">
-                      {pendingDelete?.isVirtual
-                        ? 'Omite esta fecha (queda como "Omitido"). La regla sigue activa para los demás meses.'
-                        : 'Borra solo este movimiento. La regla recurrente sigue activa.'}
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <ResponsiveDialogBody>
+            {pendingDelete?.recurringRuleId || pendingDelete?.isVirtual ? (
+              <fieldset className="rounded-md border border-border/60 bg-muted/30 p-3">
+                <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Alcance
+                </legend>
+                <div className="flex flex-col gap-2">
+                  <label className="flex cursor-pointer items-start gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="del-scope"
+                      value="this_one"
+                      checked={deleteScope === 'this_one'}
+                      onChange={() => setDeleteScope('this_one')}
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="font-medium">Solo esta ocurrencia</span>
+                      <span className="block text-xs text-muted-foreground">
+                        {pendingDelete?.isVirtual
+                          ? 'Omite esta fecha (queda como "Omitido"). La regla sigue activa para los demás meses.'
+                          : 'Borra solo este movimiento. La regla recurrente sigue activa.'}
+                      </span>
                     </span>
-                  </span>
-                </label>
-                <label className="flex cursor-pointer items-start gap-2 text-sm">
-                  <input
-                    type="radio"
-                    name="del-scope"
-                    value="forward"
-                    checked={deleteScope === 'forward'}
-                    onChange={() => setDeleteScope('forward')}
-                    className="mt-1"
-                  />
-                  <span>
-                    <span className="font-medium">De aquí en adelante</span>
-                    <span className="block text-xs text-muted-foreground">
-                      Borra esta + futuras ocurrencias y desactiva la regla. El pasado se conserva.
+                  </label>
+                  <label className="flex cursor-pointer items-start gap-2 text-sm">
+                    <input
+                      type="radio"
+                      name="del-scope"
+                      value="forward"
+                      checked={deleteScope === 'forward'}
+                      onChange={() => setDeleteScope('forward')}
+                      className="mt-1"
+                    />
+                    <span>
+                      <span className="font-medium">De aquí en adelante</span>
+                      <span className="block text-xs text-muted-foreground">
+                        Borra esta + futuras ocurrencias y desactiva la regla. El pasado se
+                        conserva.
+                      </span>
                     </span>
-                  </span>
-                </label>
-              </div>
-            </fieldset>
-          ) : null}
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPendingDelete(null)}>
-              Cancelar
-            </Button>
-            <Button variant="destructive" disabled={isDeleting} onClick={executeDelete}>
-              {isDeleting ? 'Eliminando…' : 'Eliminar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+                  </label>
+                </div>
+              </fieldset>
+            ) : null}
+            <div className="mt-2 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setPendingDelete(null)}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" disabled={isDeleting} onClick={executeDelete}>
+                {isDeleting ? 'Eliminando…' : 'Eliminar'}
+              </Button>
+            </div>
+          </ResponsiveDialogBody>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
 
       <ViewTransactionDialog tx={viewing} onClose={() => setViewing(null)} />
       <EditTransactionDialog
@@ -472,9 +475,9 @@ function TxRow({ tx, onView, onEdit, onDelete }: RowProps) {
               size="icon"
               variant="ghost"
               aria-label="Acciones del movimiento"
-              className="size-8 shrink-0 text-muted-foreground"
+              className="size-9 shrink-0 text-muted-foreground"
             >
-              <MoreVertical className="size-4" />
+              <MoreVertical className="size-5" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">

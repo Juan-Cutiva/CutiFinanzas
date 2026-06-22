@@ -3,12 +3,13 @@
 import { ExternalLink } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  ResponsiveDialog,
+  ResponsiveDialogBody,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import { KIND_LABELS, type TransactionKind } from '@/lib/accounting/shared';
 import { formatAmount, formatDate } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
@@ -37,17 +38,17 @@ interface Props {
 
 export function ViewTransactionDialog({ tx, onClose }: Props) {
   return (
-    <Dialog open={!!tx} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Detalle del movimiento</DialogTitle>
-          <DialogDescription>
+    <ResponsiveDialog open={!!tx} onOpenChange={(o) => !o && onClose()}>
+      <ResponsiveDialogContent>
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>Detalle del movimiento</ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>
             {tx ? `${KIND_LABELS[tx.kind]} · ${formatDate(tx.transactionDate)}` : ''}
-          </DialogDescription>
-        </DialogHeader>
+          </ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
 
         {tx ? (
-          <div className="grid gap-3 text-sm">
+          <ResponsiveDialogBody className="grid gap-3 text-sm">
             <Field label="Monto">
               <span className="font-mono tabular-nums text-lg font-semibold">
                 {formatAmount(Number(tx.amountMinor) / 100, tx.currency as CurrencyCode)}
@@ -96,10 +97,10 @@ export function ViewTransactionDialog({ tx, onClose }: Props) {
                 </a>
               </Field>
             ) : null}
-          </div>
+          </ResponsiveDialogBody>
         ) : null}
-      </DialogContent>
-    </Dialog>
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }
 

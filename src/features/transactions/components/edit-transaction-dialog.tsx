@@ -5,17 +5,17 @@ import * as React from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { DatePicker } from '@/components/ui/date-picker';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { MoneyInput } from '@/components/ui/money-input';
+import {
+  ResponsiveDialog,
+  ResponsiveDialogBody,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import {
   Select,
   SelectContent,
@@ -150,15 +150,17 @@ export function EditTransactionDialog({ tx, categories, onClose }: Props) {
   }
 
   return (
-    <Dialog open={!!tx} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Editar movimiento</DialogTitle>
-          <DialogDescription>{tx ? KIND_LABELS[tx.kind] : ''}</DialogDescription>
-        </DialogHeader>
+    <ResponsiveDialog open={!!tx} onOpenChange={(o) => !o && onClose()}>
+      <ResponsiveDialogContent>
+        <ResponsiveDialogHeader>
+          <ResponsiveDialogTitle>Editar movimiento</ResponsiveDialogTitle>
+          <ResponsiveDialogDescription>
+            {tx ? KIND_LABELS[tx.kind] : ''}
+          </ResponsiveDialogDescription>
+        </ResponsiveDialogHeader>
 
         {tx ? (
-          <div className="flex flex-col gap-4">
+          <ResponsiveDialogBody>
             <div className="grid gap-2">
               <Label htmlFor="edit-amount">Monto</Label>
               <MoneyInput
@@ -260,18 +262,18 @@ export function EditTransactionDialog({ tx, categories, onClose }: Props) {
                 </div>
               </fieldset>
             ) : null}
-          </div>
-        ) : null}
 
-        <DialogFooter>
-          <Button variant="ghost" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button onClick={submit} disabled={isPending || !amount}>
-            {isPending ? 'Guardando…' : 'Guardar'}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+            <div className="mt-2 flex justify-end gap-2">
+              <Button variant="ghost" onClick={onClose}>
+                Cancelar
+              </Button>
+              <Button onClick={submit} disabled={isPending || !amount}>
+                {isPending ? 'Guardando…' : 'Guardar'}
+              </Button>
+            </div>
+          </ResponsiveDialogBody>
+        ) : null}
+      </ResponsiveDialogContent>
+    </ResponsiveDialog>
   );
 }

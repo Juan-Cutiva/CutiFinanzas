@@ -6,13 +6,13 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  ResponsiveDialog,
+  ResponsiveDialogBody,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import { archiveCategoryAction } from '../actions';
 
 export interface CategoryItem {
@@ -59,29 +59,31 @@ export function CategoryList({ items }: { items: CategoryItem[] }) {
         ))}
       </ul>
 
-      <Dialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>¿Archivar esta categoría?</DialogTitle>
-            <DialogDescription>
+      <ResponsiveDialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
+        <ResponsiveDialogContent>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>¿Archivar esta categoría?</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
               {pending?.name} dejará de aparecer en listas, pero los movimientos existentes la
               conservarán como referencia.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPending(null)}>
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={isPending}
-              onClick={() => pending && execute({ id: pending.id })}
-            >
-              {isPending ? 'Archivando…' : 'Archivar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <ResponsiveDialogBody>
+            <div className="mt-2 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setPending(null)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={isPending}
+                onClick={() => pending && execute({ id: pending.id })}
+              >
+                {isPending ? 'Archivando…' : 'Archivar'}
+              </Button>
+            </div>
+          </ResponsiveDialogBody>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
     </>
   );
 }

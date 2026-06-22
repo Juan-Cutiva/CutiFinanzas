@@ -9,13 +9,13 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+  ResponsiveDialog,
+  ResponsiveDialogBody,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import { formatAmount } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import { archiveAccountAction } from '../actions';
@@ -134,29 +134,31 @@ export function AccountList({ accounts }: { accounts: AccountWithBalanceItem[] }
         })}
       </div>
 
-      <Dialog open={!!pendingDelete} onOpenChange={(o) => !o && setPendingDelete(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>¿Archivar esta cuenta?</DialogTitle>
-            <DialogDescription>
+      <ResponsiveDialog open={!!pendingDelete} onOpenChange={(o) => !o && setPendingDelete(null)}>
+        <ResponsiveDialogContent>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>¿Archivar esta cuenta?</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>
               {pendingDelete?.name} dejará de aparecer en listas, pero las transacciones existentes
               se conservan.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPendingDelete(null)}>
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={isPending}
-              onClick={() => pendingDelete && execute({ id: pendingDelete.id })}
-            >
-              {isPending ? 'Archivando…' : 'Archivar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <ResponsiveDialogBody>
+            <div className="mt-2 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setPendingDelete(null)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={isPending}
+                onClick={() => pendingDelete && execute({ id: pendingDelete.id })}
+              >
+                {isPending ? 'Archivando…' : 'Archivar'}
+              </Button>
+            </div>
+          </ResponsiveDialogBody>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
     </>
   );
 }

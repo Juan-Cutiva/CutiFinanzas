@@ -8,15 +8,15 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
+import {
+  ResponsiveDialog,
+  ResponsiveDialogBody,
+  ResponsiveDialogContent,
+  ResponsiveDialogDescription,
+  ResponsiveDialogHeader,
+  ResponsiveDialogTitle,
+} from '@/components/ui/responsive-dialog';
 import { formatAmount } from '@/lib/format';
 import type { CurrencyCode } from '@/lib/money';
 import { deleteDebtAction } from '../actions';
@@ -112,26 +112,28 @@ export function DebtList({ items }: { items: DebtItem[] }) {
         })}
       </div>
 
-      <Dialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>¿Eliminar esta deuda?</DialogTitle>
-            <DialogDescription>{pending?.name}</DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPending(null)}>
-              Cancelar
-            </Button>
-            <Button
-              variant="destructive"
-              disabled={isPending}
-              onClick={() => pending && execute({ id: pending.id })}
-            >
-              {isPending ? 'Eliminando…' : 'Eliminar'}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ResponsiveDialog open={!!pending} onOpenChange={(o) => !o && setPending(null)}>
+        <ResponsiveDialogContent>
+          <ResponsiveDialogHeader>
+            <ResponsiveDialogTitle>¿Eliminar esta deuda?</ResponsiveDialogTitle>
+            <ResponsiveDialogDescription>{pending?.name}</ResponsiveDialogDescription>
+          </ResponsiveDialogHeader>
+          <ResponsiveDialogBody>
+            <div className="mt-2 flex justify-end gap-2">
+              <Button variant="ghost" onClick={() => setPending(null)}>
+                Cancelar
+              </Button>
+              <Button
+                variant="destructive"
+                disabled={isPending}
+                onClick={() => pending && execute({ id: pending.id })}
+              >
+                {isPending ? 'Eliminando…' : 'Eliminar'}
+              </Button>
+            </div>
+          </ResponsiveDialogBody>
+        </ResponsiveDialogContent>
+      </ResponsiveDialog>
     </>
   );
 }
