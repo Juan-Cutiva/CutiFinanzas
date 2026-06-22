@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   CreditCard,
   Eye,
+  MoreVertical,
   Pencil,
   PiggyBank,
   Receipt,
@@ -26,6 +27,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import {
   deltaFor,
   isExpenseOfMonth,
@@ -373,10 +381,13 @@ function TxRow({ tx, onView, onEdit, onDelete }: RowProps) {
   if (tx.debt?.name) sublabel.push(tx.debt.name);
   if (tx.savingsGoal?.name) sublabel.push(tx.savingsGoal.name);
 
+  const title =
+    tx.description || tx.category?.name || tx.debt?.name || tx.savingsGoal?.name || 'Movimiento';
+
   return (
     <li
       className={cn(
-        'group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/30',
+        'flex items-center gap-3 px-3 py-3.5 transition-colors hover:bg-muted/30 sm:px-4',
         isVirtual && 'opacity-70',
         !tx.isPaid && !isVirtual && 'opacity-60',
       )}
@@ -384,9 +395,9 @@ function TxRow({ tx, onView, onEdit, onDelete }: RowProps) {
       {isVirtual ? (
         <span
           role="img"
-          className="grid size-4 shrink-0 place-items-center rounded border border-dashed border-muted-foreground/40"
+          className="grid size-5 shrink-0 place-items-center self-start rounded border border-dashed border-muted-foreground/40"
           aria-label="Programado, aún no aplicado"
-          title="Aún no se aplica — el cron lo materializará en su fecha"
+          title="Aún no se aplica — se materializa en su fecha"
         />
       ) : (
         <Checkbox
@@ -394,7 +405,7 @@ function TxRow({ tx, onView, onEdit, onDelete }: RowProps) {
           aria-label={tx.isPaid ? 'Marcar como pendiente' : 'Marcar como confirmado'}
           disabled={togglePaid.isPending}
           onCheckedChange={(checked) => togglePaid.execute({ id: tx.id, isPaid: checked === true })}
-          className="shrink-0"
+          className="size-5 shrink-0 self-start"
         />
       )}
       <div
@@ -407,91 +418,78 @@ function TxRow({ tx, onView, onEdit, onDelete }: RowProps) {
         }}
         aria-hidden
       >
-        <Icon className="size-4" />
+        <Icon className="size-[1.1rem]" />
       </div>
+
+      {/* Contenido: descripción en línea 1 (todo el ancho), metadatos + badge en
+          línea 2. Antes el badge competía con la descripción y la truncaba. */}
       <div className="min-w-0 flex-1">
-        <p className="flex items-center gap-2 truncate text-sm font-medium">
-          <span className="truncate">
-            {tx.description ||
-              tx.category?.name ||
-              tx.debt?.name ||
-              tx.savingsGoal?.name ||
-              'Movimiento'}
-          </span>
+        <p className="truncate text-sm font-medium leading-tight">{title}</p>
+        <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-xs text-muted-foreground">
           {isVirtual ? (
-            <span
-              className="shrink-0 rounded bg-[color:var(--info)]/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--info)]"
-              title="Programado — el cron lo creará al llegar la fecha"
-            >
+            <span className="rounded bg-[color:var(--info)]/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--info)]">
               Programado
             </span>
           ) : tx.recurringRuleId ? (
-            <span className="shrink-0 rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
+            <span className="rounded bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-primary">
               Recurrente
             </span>
           ) : null}
           {tx.kind === 'cc_charge' ? (
-            <span
-              className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground"
-              title="Compra con tarjeta de crédito — no cuenta como gasto del mes"
-            >
+            <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
               CC
             </span>
           ) : null}
-        </p>
-        {sublabel.length > 0 ? (
-          <p className="truncate text-xs text-muted-foreground">{sublabel.join(' · ')}</p>
-        ) : null}
+          {sublabel.length > 0 ? <span className="truncate">{sublabel.join(' · ')}</span> : null}
+        </div>
       </div>
-      <div className="flex items-center gap-1">
+
+      {/* Monto + menú de acciones (⋮). El menú reemplaza los 3 botones que en
+          mobile aplastaban la fila y truncaban el texto. */}
+      <div className="flex shrink-0 items-center gap-1 self-start">
         <span
-          className={`font-mono tabular-nums text-sm font-semibold ${
+          className={cn(
+            'font-mono tabular-nums text-sm font-semibold whitespace-nowrap',
             internal
               ? 'text-muted-foreground'
               : income
                 ? 'text-amount-positive'
                 : expense
                   ? 'text-amount-negative'
-                  : 'text-foreground'
-          }`}
+                  : 'text-foreground',
+          )}
           title={internal ? 'Movimiento interno — no afecta tu patrimonio total' : undefined}
         >
-          {/* Para movimientos internos (transfer / cc_charge / savings_contribution)
-              mostramos el monto SIN signo y prefijado con ⇆ para que se note que es
-              un movimiento interno y no un gasto/ingreso real. */}
           {internal
             ? `⇆ ${formatAmount(amountMajor, tx.currency as CurrencyCode, { signDisplay: 'auto' })}`
             : formatAmount(income ? amountMajor : -amountMajor, tx.currency as CurrencyCode, {
                 signDisplay: income || expense ? 'always' : 'auto',
               })}
         </span>
-        <Button
-          size="icon"
-          variant="ghost"
-          aria-label="Ver detalles"
-          className="size-9 transition-opacity md:size-8 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-          onClick={onView}
-        >
-          <Eye className="size-4 text-muted-foreground" />
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          aria-label="Editar movimiento"
-          className="size-9 transition-opacity md:size-8 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-          onClick={onEdit}
-        >
-          <Pencil className="size-4 text-muted-foreground" />
-        </Button>
-        <Button
-          size="icon"
-          variant="ghost"
-          aria-label="Eliminar movimiento"
-          className="size-9 transition-opacity md:size-8 md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
-          onClick={onDelete}
-        >
-          <Trash2 className="size-4 text-muted-foreground" />
-        </Button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label="Acciones del movimiento"
+              className="size-8 shrink-0 text-muted-foreground"
+            >
+              <MoreVertical className="size-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onSelect={onView}>
+              <Eye className="size-4" /> Ver detalles
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={onEdit}>
+              <Pencil className="size-4" /> Editar
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem destructive onSelect={onDelete}>
+              <Trash2 className="size-4" /> Eliminar
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </li>
   );
