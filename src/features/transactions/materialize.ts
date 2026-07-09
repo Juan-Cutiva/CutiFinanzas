@@ -6,7 +6,7 @@ import { recurringRules, transactions } from '@/db/schema';
 import { env } from '@/env';
 import { nowInTz } from '@/lib/format';
 import type { UserId } from '@/types/ids';
-import { nextOccurrence, type RecurrenceFrequencyValue } from './domain';
+import { nextOccurrence, type RecurrenceFrequencyValue, resolveLookaheadDays } from './domain';
 
 export interface MaterializeResult {
   created: number;
@@ -33,10 +33,14 @@ export interface MaterializeResult {
 export async function materializeDueForUser(
   userId: UserId,
   timezone: string,
-  lookaheadDays: number = env.CRON_MATERIALIZE_LOOKAHEAD_DAYS,
+  lookaheadDays?: number,
 ): Promise<MaterializeResult> {
+  // No confiar en el tipo declarado de env: con SKIP_ENV_VALIDATION=true llega
+  // undefined/string y un lookahead inválido generaba horizon="Invalid Date"
+  // (query rota → nada se materializaba). resolveLookaheadDays lo garantiza.
+  const days = resolveLookaheadDays(lookaheadDays ?? env.CRON_MATERIALIZE_LOOKAHEAD_DAYS);
   const todayLocal = nowInTz(timezone).format('YYYY-MM-DD');
-  const horizon = nowInTz(timezone).add(lookaheadDays, 'day').format('YYYY-MM-DD');
+  const horizon = nowInTz(timezone).add(days, 'day').format('YYYY-MM-DD');
 
   const due = await db.query.recurringRules.findMany({
     where: and(

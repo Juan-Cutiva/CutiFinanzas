@@ -73,3 +73,4 @@ public/workbox-*.js
 # Excel/PDF dumps from analysis
 /excel_dump.txt
 /pdf_dump.txt
+.env*.local
